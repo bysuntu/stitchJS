@@ -19,6 +19,9 @@ import {
   analyzePolylines
 } from './ops.js';
 
+// Import point merging utilities
+import { removeDuplicatePoints } from './mergePoints.js';
+
 // Global state
 let state = {
   polyData: null,
@@ -125,7 +128,16 @@ async function handleFileSelect(event) {
     const reader = vtkSTLReader.newInstance();
     const arrayBuffer = await file.arrayBuffer();
     reader.parseAsArrayBuffer(arrayBuffer);
-    state.polyData = reader.getOutputData();
+    const rawPolyData = reader.getOutputData();
+
+    console.log('Loaded STL:', rawPolyData.getNumberOfPoints(), 'points');
+
+    // Merge close/duplicate points for cleaner processing
+    // Tolerance: 0.0 = exact duplicates only, 1e-6 = very close points, etc.
+    const mergeTolerance = 1e-6; // Adjust this value to merge closer points
+    state.polyData = removeDuplicatePoints(rawPolyData, mergeTolerance);
+
+    console.log('After merging duplicates:', state.polyData.getNumberOfPoints(), 'points');
 
     // Update stats
     const numPoints = state.polyData.getNumberOfPoints();

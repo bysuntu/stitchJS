@@ -9,19 +9,40 @@ export function detectBoundaryEdgesSTLWithAdjacency(polyData) {
   const edgeCount = Object.create(null);
   const edgePoints = Object.create(null);
 
-  // Hash function - Cantor pairing
-  const hash = (a, b) => a >= b ? a * a + a + b : b * b + a;
-
+  // Hash function - Cantor pairing (assumes a <= b)
+  const hash = (a, b) => b * b + a;
   let offset = 0;
 
   // First pass: count edges
   for (let cellId = 0; cellId < numCells; cellId++) {
     offset++; // skip cell size (always 3 for triangles)
 
-    const p0 = cellData[offset++];
-    const p1 = cellData[offset++];
-    const p2 = cellData[offset++];
+    const triIdx = [0, 0, 0];
+    triIdx[0] = cellData[offset++];
+    triIdx[1] = cellData[offset++];
+    triIdx[2] = cellData[offset++];
 
+    triIdx.forEach((_, i) => {
+      const p0 = triIdx[i];
+      const p1 = triIdx[(i + 1) % 3];
+      const pt_min = Math.min(p0, p1);
+      const pt_max = Math.max(p0, p1);
+      const h = hash(pt_min, pt_max);
+
+      const count = (edgeCount[h] || 0) + 1;
+      edgeCount[h] = count;
+
+      if (count === 1) {
+        // First time seeing this edge - store it
+        edgePoints[h] = [pt_min, pt_max];
+      } else if (count === 2) {
+        // Second time - it's internal, remove both entries
+        delete edgeCount[h];
+        delete edgePoints[h];
+      }
+    });
+
+    /*
     // Process 3 edges of triangle
     let h = hash(Math.min(p0, p1), Math.max(p0, p1));
     edgeCount[h] = (edgeCount[h] || 0) + 1;
@@ -34,14 +55,13 @@ export function detectBoundaryEdgesSTLWithAdjacency(polyData) {
     h = hash(Math.min(p2, p0), Math.max(p2, p0));
     edgeCount[h] = (edgeCount[h] || 0) + 1;
     if (edgeCount[h] === 1) edgePoints[h] = [Math.min(p2, p0), Math.max(p2, p0)];
+    */
   }
 
   // Extract boundary edges and build adjacency map
   const boundaryEdges = [];
   const adjacencyMap = new Map();
-
   for (const h in edgeCount) {
-    if (edgeCount[h] === 1) {
       const [pt1, pt2] = edgePoints[h];
       boundaryEdges.push([pt1, pt2]);
 
@@ -51,7 +71,6 @@ export function detectBoundaryEdgesSTLWithAdjacency(polyData) {
 
       adjacencyMap.get(pt1).add(pt2);
       adjacencyMap.get(pt2).add(pt1);
-    }
   }
 
   return { boundaryEdges, adjacencyMap };

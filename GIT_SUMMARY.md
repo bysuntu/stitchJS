@@ -2,30 +2,28 @@
 
 ## ✅ What Will Be Tracked in Git
 
-### Configuration Files (3 files, ~2 KB)
+### Configuration Files (4 files, ~3 KB)
 - ✅ `package.json` (634 bytes) - NPM dependencies
 - ✅ `webpack.config.js` (1.1 KB) - Build configuration
-- ✅ `.gitignore` (858 bytes) - Git ignore rules
+- ✅ `.gitignore` (1.0 KB) - Git ignore rules
+- ✅ `.gitattributes` (500 bytes) - Line ending rules
 
-### Source Code (3 files, ~21 KB)
+### Source Code (3 files, ~27 KB)
 - ✅ `src/index.html` (7.2 KB) - HTML template
 - ✅ `src/index.js` (13.3 KB) - Application entry point
 - ✅ `src/ops.js` (6.4 KB) - Core algorithms
 
-### Documentation (3 files, ~14 KB)
+### Documentation (4 files, ~18 KB)
 - ✅ `README.md` (7.1 KB) - Full documentation
 - ✅ `QUICKSTART.md` (2.7 KB) - Quick start guide
 - ✅ `PROJECT_STRUCTURE.md` (4.4 KB) - Project structure
+- ✅ `GIT_SUMMARY.md` (4.2 KB) - This file
 
 ### Scripts & Assets (2 files, ~298 KB)
 - ✅ `start-dev.bat` (390 bytes) - Dev server launcher
 - ✅ `test.stl` (297 KB) - Sample STL file
 
-### Reference Files (2 files, ~11 KB)
-- ✅ `ops.jsx` (8.9 KB) - Original algorithms
-- ✅ `stitch.jsx` (2.0 KB) - Original examples
-
-**Total tracked: ~346 KB** (13 files)
+**Total tracked: ~335 KB** (13 files)
 
 ---
 
@@ -41,11 +39,13 @@
 - ❌ `node_modules/` (536 packages)
 - ❌ `package-lock.json` (252 KB)
 
-### Old Unused Files (~36 KB)
+### Old Unused Files (~47 KB)
 These are from the pre-webpack CDN-based version:
 - ❌ `app.js` (14 KB) - replaced by `src/index.js`
 - ❌ `index.html` (8.6 KB) - replaced by `src/index.html`
 - ❌ `ops.js` (6.4 KB) - replaced by `src/ops.js`
+- ❌ `ops.jsx` (8.9 KB) - reference file, not needed
+- ❌ `stitch.jsx` (2.0 KB) - reference file, not needed
 - ❌ `test-vtk.html` (1.5 KB) - test file, no longer needed
 - ❌ `start-server.bat` (156 bytes) - replaced by `start-dev.bat`
 

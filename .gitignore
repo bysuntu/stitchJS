@@ -57,10 +57,10 @@ coverage/
 /test-vtk.html
 /start-server.bat
 
+# Unused reference files
+ops.jsx
+stitch.jsx
+
 # Large binary files (except test file)
 *.stl
 !test.stl
-
-# Reference files (optional - keep for now, uncomment to ignore)
-# ops.jsx
-# stitch.jsx

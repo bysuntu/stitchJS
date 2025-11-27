@@ -290,31 +290,16 @@ function visualizeBoundaryEdges(boundaryData) {
 }
 
 function visualizeCorners(corners) {
-  // Remove old corners actor
+  // Remove old corners actors
   if (state.actors.corners) {
-    renderer.removeActor(state.actors.corners);
+    if (Array.isArray(state.actors.corners)) {
+      state.actors.corners.forEach(actor => renderer.removeActor(actor));
+    } else {
+      renderer.removeActor(state.actors.corners);
+    }
   }
 
   if (corners.length === 0) return;
-
-  // Create points for corners
-  const cornersPolyData = vtkPolyData.newInstance();
-  const cornersPoints = vtkPoints.newInstance();
-  const vertices = vtkCellArray.newInstance();
-
-  const pointsArray = [];
-  const verticesArray = [];
-
-  corners.forEach((corner, idx) => {
-    pointsArray.push(...corner.position);
-    verticesArray.push(1, idx);
-  });
-
-  cornersPoints.setData(Float32Array.from(pointsArray));
-  vertices.setData(Uint32Array.from(verticesArray));
-
-  cornersPolyData.setPoints(cornersPoints);
-  cornersPolyData.setVerts(vertices);
 
   // Calculate a dynamic radius for the spheres based on the model's bounding box
   const bounds = state.polyData.getBounds();
@@ -323,27 +308,32 @@ function visualizeCorners(corners) {
     (bounds[3] - bounds[2]) ** 2 +
     (bounds[5] - bounds[4]) ** 2
   );
-  const radius = diagonal * 0.005; // Use 0.5% of the bounding box diagonal as radius
-
-  // Use sphere glyphs for corners
-  const sphereSource = vtkSphereSource.newInstance({
-    radius: radius,
-    thetaResolution: 16,
-    phiResolution: 16
-  });
-
-  const mapper = vtkGlyph3DMapper.newInstance();
-  mapper.setInputData(cornersPolyData, 0);
-  mapper.setInputConnection(sphereSource.getOutputPort(), 1);
-
-  const actor = vtkActor.newInstance();
-  actor.setMapper(mapper);
+  const radius = diagonal * 0.01; // Use 1% of the bounding box diagonal as radius
 
   const color = hexToRgb(cornerColor.value);
-  actor.getProperty().setColor(color[0], color[1], color[2]);
+  const cornerActors = [];
 
-  renderer.addActor(actor);
-  state.actors.corners = actor;
+  // Create a separate sphere for each corner
+  corners.forEach((corner) => {
+    const sphereSource = vtkSphereSource.newInstance({
+      center: corner.position,
+      radius: radius,
+      thetaResolution: 16,
+      phiResolution: 16
+    });
+
+    const mapper = vtkMapper.newInstance();
+    mapper.setInputConnection(sphereSource.getOutputPort());
+
+    const actor = vtkActor.newInstance();
+    actor.setMapper(mapper);
+    actor.getProperty().setColor(color[0], color[1], color[2]);
+
+    renderer.addActor(actor);
+    cornerActors.push(actor);
+  });
+
+  state.actors.corners = cornerActors;
 
   renderWindow.render();
 }
@@ -431,7 +421,11 @@ function updateVisibility() {
     state.actors.boundary.setVisibility(showBoundary.checked);
   }
   if (state.actors.corners) {
-    state.actors.corners.setVisibility(showCorners.checked);
+    if (Array.isArray(state.actors.corners)) {
+      state.actors.corners.forEach(actor => actor.setVisibility(showCorners.checked));
+    } else {
+      state.actors.corners.setVisibility(showCorners.checked);
+    }
   }
   if (state.actors.polylines) {
     state.actors.polylines.setVisibility(showPolylines.checked);
@@ -450,7 +444,13 @@ function updateColors() {
   }
   if (state.actors.corners) {
     const color = hexToRgb(cornerColor.value);
-    state.actors.corners.getProperty().setColor(color[0], color[1], color[2]);
+    if (Array.isArray(state.actors.corners)) {
+      state.actors.corners.forEach(actor => {
+        actor.getProperty().setColor(color[0], color[1], color[2]);
+      });
+    } else {
+      state.actors.corners.getProperty().setColor(color[0], color[1], color[2]);
+    }
   }
   if (state.actors.polylines) {
     const color = hexToRgb(polylineColor.value);

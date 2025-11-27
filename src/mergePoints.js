@@ -1,4 +1,7 @@
 // Utilities for merging close points in VTK.js polydata
+import vtkPolyData from '@kitware/vtk.js/Common/DataModel/PolyData';
+import vtkPoints from '@kitware/vtk.js/Common/Core/Points';
+import vtkCellArray from '@kitware/vtk.js/Common/Core/CellArray';
 
 /**
  * Method 1: Using VTK.js built-in filter (vtkCleanPolyData)
@@ -195,10 +198,6 @@ export function mergeClosePointsSimple(polyData, tolerance = 1e-6) {
  * Helper function to create new polydata with remapped points
  */
 function remapPolyDataPoints(originalPolyData, newPointsArray, pointMap) {
-  const vtkPolyData = require('@kitware/vtk.js/Common/DataModel/PolyData').default;
-  const vtkPoints = require('@kitware/vtk.js/Common/Core/Points').default;
-  const vtkCellArray = require('@kitware/vtk.js/Common/Core/CellArray').default;
-
   const newPolyData = vtkPolyData.newInstance();
 
   // Set new points

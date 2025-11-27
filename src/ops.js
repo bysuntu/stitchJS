@@ -25,8 +25,9 @@ export function detectBoundaryEdgesSTLWithAdjacency(polyData) {
     triIdx.forEach((_, i) => {
       const p0 = triIdx[i];
       const p1 = triIdx[(i + 1) % 3];
-      const pt_min = Math.min(p0, p1);
-      const pt_max = Math.max(p0, p1);
+      // const pt_min = Math.min(p0, p1);
+      // const pt_max = Math.max(p0, p1);
+      const [rotation, pt_min, pt_max] = p0 < p1 ? [1, p0, p1] : [-1, p1, p0];
       const h = hash(pt_min, pt_max);
 
       const count = (edgeCount[h] || 0) + 1;
@@ -34,7 +35,7 @@ export function detectBoundaryEdgesSTLWithAdjacency(polyData) {
 
       if (count === 1) {
         // First time seeing this edge - store it
-        edgePoints[h] = [pt_min, pt_max];
+        edgePoints[h] = [pt_min, pt_max, rotation, cellId, i];
         edgeNum++;
       } else if (count === 2) {
         // Second time - it's internal, remove both entries
@@ -50,15 +51,15 @@ export function detectBoundaryEdgesSTLWithAdjacency(polyData) {
   const boundaryEdges = [];
   const adjacencyMap = new Map();
   for (const h in edgeCount) {
-      const [pt1, pt2] = edgePoints[h];
-      boundaryEdges.push([pt1, pt2]);
+      const [p0, p1, rotation, cellId, apex] = edgePoints[h];
+      boundaryEdges.push([p0, p1]);
 
       // Build adjacency map
-      if (!adjacencyMap.has(pt1)) adjacencyMap.set(pt1, new Set());
-      if (!adjacencyMap.has(pt2)) adjacencyMap.set(pt2, new Set());
+      if (!adjacencyMap.has(p0)) adjacencyMap.set(p0, new Set());
+      if (!adjacencyMap.has(p1)) adjacencyMap.set(p1, new Set());
 
-      adjacencyMap.get(pt1).add(pt2);
-      adjacencyMap.get(pt2).add(pt1);
+      adjacencyMap.get(p0).add([p1, rotation, cellId, apex]);
+      adjacencyMap.get(p1).add([p0, -rotation, cellId, apex]);
   }
 
   return { boundaryEdges, adjacencyMap };
@@ -81,7 +82,10 @@ export function detectSharpCornersWithMap(polyData, boundaryData, angleThreshold
       const pz = pointData[pointId * 3 + 2];
 
     if (neighbors.size == 2) {
-      const [n1, n2] = Array.from(neighbors);
+      const [pack1, pack2] = Array.from(neighbors);
+
+      const [n1, rotation1, cellId1, apex1] = pack1;
+      const [n2, rotation2, cellId2, apex2] = pack2;
 
       const p1x = pointData[n1 * 3];
       const p1y = pointData[n1 * 3 + 1];

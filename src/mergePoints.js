@@ -4,18 +4,6 @@ import vtkPoints from '@kitware/vtk.js/Common/Core/Points';
 import vtkCellArray from '@kitware/vtk.js/Common/Core/CellArray';
 
 /**
- * Method 1: Using VTK.js built-in filter (vtkCleanPolyData)
- * This is the simplest and most efficient approach
- * Note: Currently not available in vtk.js, returns null
- */
-export function mergePointsWithCleanPolyData(_polyData, _tolerance = 0.0) {
-  // vtkCleanPolyData is not available in vtk.js web builds
-  // Use manual method instead
-  console.warn('vtkCleanPolyData not available in vtk.js, use manual method');
-  return null;
-}
-
-/**
  * Method 2: Manual point merging using spatial hashing
  * Works when vtkCleanPolyData is not available
  *
@@ -98,15 +86,16 @@ export function mergeClosePointsManual(polyData, tolerance = 1e-6) {
 
           // Check distance to candidates
           for (const candidateId of candidateIds) {
+            // candidateId is the point ID, convert to array index
             const idx = candidateId * 3;
-            const dx = x - newPoints[idx];
-            const dy = y - newPoints[idx + 1];
-            const dz = z - newPoints[idx + 2];
-            const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+            const diffX = x - newPoints[idx];
+            const diffY = y - newPoints[idx + 1];
+            const diffZ = z - newPoints[idx + 2];
+            const dist = Math.sqrt(diffX*diffX + diffY*diffY + diffZ*diffZ);
 
             if (dist <= tolerance) {
-              // Found a match, use existing point
-              pointMap.set(i, candidateId / 3);
+              // Found a match, use existing point (candidateId is already the point ID)
+              pointMap.set(i, candidateId);
               foundMatch = true;
               break;
             }
@@ -124,11 +113,11 @@ export function mergeClosePointsManual(polyData, tolerance = 1e-6) {
       newPoints.push(x, y, z);
       pointMap.set(i, newId);
 
-      // Add to spatial hash
+      // Add to spatial hash (store point ID, not array index)
       if (!spatialHash.has(hashKey)) {
         spatialHash.set(hashKey, []);
       }
-      spatialHash.get(hashKey).push(newPoints.length - 3);
+      spatialHash.get(hashKey).push(newId);
     }
   }
 
@@ -137,61 +126,6 @@ export function mergeClosePointsManual(polyData, tolerance = 1e-6) {
   // Create new polydata with merged points
   const newPolyData = remapPolyDataPoints(polyData, newPoints, pointMap);
   return newPolyData;
-}
-
-/**
- * Method 3: Simpler point merging using direct comparison
- * Slower but easier to understand
- *
- * @param {vtkPolyData} polyData - Input polydata
- * @param {number} tolerance - Distance threshold for merging
- * @returns {vtkPolyData} - New polydata with merged points
- */
-export function mergeClosePointsSimple(polyData, tolerance = 1e-6) {
-  const points = polyData.getPoints();
-  const pointData = points.getData();
-  const numPoints = points.getNumberOfPoints();
-
-  const pointMap = new Map();
-  const newPoints = [];
-
-  console.log(`Merging ${numPoints} points (simple method)...`);
-
-  for (let i = 0; i < numPoints; i++) {
-    const x1 = pointData[i * 3];
-    const y1 = pointData[i * 3 + 1];
-    const z1 = pointData[i * 3 + 2];
-
-    let foundMatch = false;
-
-    // Check against all existing new points
-    for (let j = 0; j < newPoints.length / 3; j++) {
-      const x2 = newPoints[j * 3];
-      const y2 = newPoints[j * 3 + 1];
-      const z2 = newPoints[j * 3 + 2];
-
-      const dx = x1 - x2;
-      const dy = y1 - y2;
-      const dz = z1 - z2;
-      const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
-
-      if (dist <= tolerance) {
-        pointMap.set(i, j);
-        foundMatch = true;
-        break;
-      }
-    }
-
-    if (!foundMatch) {
-      const newId = newPoints.length / 3;
-      newPoints.push(x1, y1, z1);
-      pointMap.set(i, newId);
-    }
-  }
-
-  console.log(`Reduced from ${numPoints} to ${newPoints.length / 3} points`);
-
-  return remapPolyDataPoints(polyData, newPoints, pointMap);
 }
 
 /**
@@ -290,47 +224,4 @@ function remapPolyDataPoints(originalPolyData, newPointsArray, pointMap) {
  */
 export function removeDuplicatePoints(polyData, tolerance = 0.0) {
   return mergeClosePointsManual(polyData, tolerance);
-}
-
-/**
- * Calculate appropriate tolerance based on bounding box
- */
-export function calculateMergeTolerance(polyData, percentage = 0.001) {
-  const bounds = polyData.getBounds();
-  const dx = bounds[1] - bounds[0];
-  const dy = bounds[3] - bounds[2];
-  const dz = bounds[5] - bounds[4];
-  const maxDim = Math.max(dx, dy, dz);
-
-  const tolerance = maxDim * percentage;
-  console.log(`Calculated merge tolerance: ${tolerance} (${percentage * 100}% of bounding box)`);
-  return tolerance;
-}
-
-/**
- * Example usage function
- */
-export function mergePointsExample(polyData) {
-  console.log('Original polydata:', {
-    numPoints: polyData.getNumberOfPoints(),
-    numPolys: polyData.getNumberOfPolys()
-  });
-
-  // Calculate tolerance as 0.1% of bounding box
-  const tolerance = calculateMergeTolerance(polyData, 0.001);
-
-  // Try built-in filter first
-  let mergedPolyData = mergePointsWithCleanPolyData(polyData, tolerance);
-
-  // Fall back to manual method if built-in not available
-  if (!mergedPolyData) {
-    mergedPolyData = mergeClosePointsManual(polyData, tolerance);
-  }
-
-  console.log('Merged polydata:', {
-    numPoints: mergedPolyData.getNumberOfPoints(),
-    numPolys: mergedPolyData.getNumberOfPolys()
-  });
-
-  return mergedPolyData;
 }

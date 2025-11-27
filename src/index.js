@@ -316,17 +316,25 @@ function visualizeCorners(corners) {
   cornersPolyData.setPoints(cornersPoints);
   cornersPolyData.setVerts(vertices);
 
+  // Calculate a dynamic radius for the spheres based on the model's bounding box
+  const bounds = state.polyData.getBounds();
+  const diagonal = Math.sqrt(
+    (bounds[1] - bounds[0]) ** 2 +
+    (bounds[3] - bounds[2]) ** 2 +
+    (bounds[5] - bounds[4]) ** 2
+  );
+  const radius = diagonal * 0.005; // Use 0.5% of the bounding box diagonal as radius
+
   // Use sphere glyphs for corners
   const sphereSource = vtkSphereSource.newInstance({
-    radius: 0.5,
-    thetaResolution: 8,
-    phiResolution: 8
+    radius: radius,
+    thetaResolution: 16,
+    phiResolution: 16
   });
 
   const mapper = vtkGlyph3DMapper.newInstance();
   mapper.setInputData(cornersPolyData, 0);
   mapper.setInputConnection(sphereSource.getOutputPort(), 1);
-  mapper.setScaleFactor(1.0);
 
   const actor = vtkActor.newInstance();
   actor.setMapper(mapper);

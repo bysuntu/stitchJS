@@ -74,58 +74,70 @@ export function detectSharpCornersWithMap(polyData, boundaryData, angleThreshold
 
   // Iterate through boundary points
   adjacencyMap.forEach((neighbors, pointId) => {
-    // Boundary corner must have exactly 2 neighbors
-    if (neighbors.size !== 2) return;
+    
+      // Get coordinates
+      const px = pointData[pointId * 3];
+      const py = pointData[pointId * 3 + 1];
+      const pz = pointData[pointId * 3 + 2];
 
-    const [n1, n2] = Array.from(neighbors);
+    if (neighbors.size == 2) {
+      const [n1, n2] = Array.from(neighbors);
 
-    // Get coordinates
-    const px = pointData[pointId * 3];
-    const py = pointData[pointId * 3 + 1];
-    const pz = pointData[pointId * 3 + 2];
+      const p1x = pointData[n1 * 3];
+      const p1y = pointData[n1 * 3 + 1];
+      const p1z = pointData[n1 * 3 + 2];
 
-    const p1x = pointData[n1 * 3];
-    const p1y = pointData[n1 * 3 + 1];
-    const p1z = pointData[n1 * 3 + 2];
+      const p2x = pointData[n2 * 3];
+      const p2y = pointData[n2 * 3 + 1];
+      const p2z = pointData[n2 * 3 + 2];
 
-    const p2x = pointData[n2 * 3];
-    const p2y = pointData[n2 * 3 + 1];
-    const p2z = pointData[n2 * 3 + 2];
+      // Vectors from point to neighbors
+      let v1x = p1x - px;
+      let v1y = p1y - py;
+      let v1z = p1z - pz;
 
-    // Vectors from point to neighbors
-    let v1x = p1x - px;
-    let v1y = p1y - py;
-    let v1z = p1z - pz;
+      let v2x = p2x - px;
+      let v2y = p2y - py;
+      let v2z = p2z - pz;
 
-    let v2x = p2x - px;
-    let v2y = p2y - py;
-    let v2z = p2z - pz;
+      // Normalize
+      const len1 = Math.sqrt(v1x * v1x + v1y * v1y + v1z * v1z);
+      const len2 = Math.sqrt(v2x * v2x + v2y * v2y + v2z * v2z);
 
-    // Normalize
-    const len1 = Math.sqrt(v1x*v1x + v1y*v1y + v1z*v1z);
-    const len2 = Math.sqrt(v2x*v2x + v2y*v2y + v2z*v2z);
+      if (len1 === 0 || len2 === 0) return;
 
-    if (len1 === 0 || len2 === 0) return;
+      v1x /= len1; v1y /= len1; v1z /= len1;
+      v2x /= len2; v2y /= len2; v2z /= len2;
 
-    v1x /= len1; v1y /= len1; v1z /= len1;
-    v2x /= len2; v2y /= len2; v2z /= len2;
+      // Dot product
+      const dot = v1x * v2x + v1y * v2y + v1z * v2z;
 
-    // Dot product
-    const dot = v1x*v2x + v1y*v2y + v1z*v2z;
-
-    // Check if sharp corner (small angle = high dot product)
-    if (dot > cosThreshold) {
-      const angle = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
+      // Check if sharp corner (small angle = high dot product)
+      if (dot > cosThreshold) {
+        const angle = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
+        corners.push({
+          pointId,
+          position: [px, py, pz],
+          angle,
+          neighbors: [n1, n2]
+        });
+      }
+    }
+    else if (neighbors.size > 2) {
+      // Imagine that there are two rings sharing one point. 
+      // This point will have more than 2 neighbors.
+      // It is also considered a corner.
+      const angle = -1;
       corners.push({
         pointId,
         position: [px, py, pz],
         angle,
-        neighbors: [n1, n2]
+        neighbors: Array.from(neighbors)
       });
     }
   });
-
-  corners.sort((a, b) => a.angle - b.angle);
+  // No need to sort by angle
+  // corners.sort((a, b) => a.angle - b.angle);
   return corners;
 }
 

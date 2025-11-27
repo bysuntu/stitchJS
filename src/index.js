@@ -132,12 +132,14 @@ async function handleFileSelect(event) {
 
     console.log('Loaded STL:', rawPolyData.getNumberOfPoints(), 'points');
 
-    // Merge close/duplicate points for cleaner processing
-    // Tolerance: 0.0 = exact duplicates only, 1e-6 = very close points, etc.
-    const mergeTolerance = 1e-6; // Adjust this value to merge closer points
-    state.polyData = removeDuplicatePoints(rawPolyData, mergeTolerance);
+    // Step 1: Merge exact duplicates first (required for proper STL conversion)
+    const cleanPolyData = removeDuplicatePoints(rawPolyData, 0);
+    console.log('After exact duplicate removal:', cleanPolyData.getNumberOfPoints(), 'points');
 
-    console.log('After merging duplicates:', state.polyData.getNumberOfPoints(), 'points');
+    // Step 2: Apply proximity-based merging for close points
+    const proximityTolerance = 1e-6; // Adjust: 1e-6 = very close, 1e-3 = looser
+    state.polyData = removeDuplicatePoints(cleanPolyData, proximityTolerance);
+    console.log('After proximity merging:', state.polyData.getNumberOfPoints(), 'points');
 
     // Update stats
     const numPoints = state.polyData.getNumberOfPoints();

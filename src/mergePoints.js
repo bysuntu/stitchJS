@@ -32,8 +32,36 @@ export function mergeClosePointsManual(polyData, tolerance = 1e-6) {
 
   console.log(`Merging ${numPoints} points with tolerance ${tolerance}...`);
 
-  // Spatial hash grid for faster lookup
-  const gridSize = tolerance > 0 ? tolerance : 1e-6;
+  // Fast path for exact duplicates (tolerance = 0)
+  if (tolerance === 0) {
+    const exactHash = new Map();
+
+    for (let i = 0; i < numPoints; i++) {
+      const x = pointData[i * 3];
+      const y = pointData[i * 3 + 1];
+      const z = pointData[i * 3 + 2];
+
+      // Create exact coordinate hash
+      const key = `${x},${y},${z}`;
+
+      if (exactHash.has(key)) {
+        // Reuse existing point
+        pointMap.set(i, exactHash.get(key));
+      } else {
+        // Add new unique point
+        const newId = newPoints.length / 3;
+        newPoints.push(x, y, z);
+        pointMap.set(i, newId);
+        exactHash.set(key, newId);
+      }
+    }
+
+    console.log(`Reduced from ${numPoints} to ${newPoints.length / 3} points`);
+    return remapPolyDataPoints(polyData, newPoints, pointMap);
+  }
+
+  // Spatial hash grid for proximity-based merging
+  const gridSize = tolerance;
   const spatialHash = new Map();
 
   const getHashKey = (x, y, z) => {

@@ -12,7 +12,7 @@ export function detectBoundaryEdgesSTLWithAdjacency(polyData) {
   // Hash function - Cantor pairing (assumes a <= b)
   const hash = (a, b) => b * b + a;
   let offset = 0;
-
+  let edgeNum = 0;
   // First pass: count edges
   for (let cellId = 0; cellId < numCells; cellId++) {
     offset++; // skip cell size (always 3 for triangles)
@@ -35,29 +35,17 @@ export function detectBoundaryEdgesSTLWithAdjacency(polyData) {
       if (count === 1) {
         // First time seeing this edge - store it
         edgePoints[h] = [pt_min, pt_max];
+        edgeNum++;
       } else if (count === 2) {
         // Second time - it's internal, remove both entries
+        console.log('Found internal edge');
         delete edgeCount[h];
         delete edgePoints[h];
       }
     });
-
-    /*
-    // Process 3 edges of triangle
-    let h = hash(Math.min(p0, p1), Math.max(p0, p1));
-    edgeCount[h] = (edgeCount[h] || 0) + 1;
-    if (edgeCount[h] === 1) edgePoints[h] = [Math.min(p0, p1), Math.max(p0, p1)];
-
-    h = hash(Math.min(p1, p2), Math.max(p1, p2));
-    edgeCount[h] = (edgeCount[h] || 0) + 1;
-    if (edgeCount[h] === 1) edgePoints[h] = [Math.min(p1, p2), Math.max(p1, p2)];
-
-    h = hash(Math.min(p2, p0), Math.max(p2, p0));
-    edgeCount[h] = (edgeCount[h] || 0) + 1;
-    if (edgeCount[h] === 1) edgePoints[h] = [Math.min(p2, p0), Math.max(p2, p0)];
-    */
   }
-
+  console.log(`Found ${edgeNum} boundary edges`);
+  console.log(`Found ${Object.keys(edgeCount).length} boundary edges`);
   // Extract boundary edges and build adjacency map
   const boundaryEdges = [];
   const adjacencyMap = new Map();

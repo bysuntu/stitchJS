@@ -223,7 +223,7 @@ function visualizeMesh(polyData) {
 
   const color = hexToRgb(meshColor.value);
   actor.getProperty().setColor(color[0], color[1], color[2]);
-  actor.getProperty().setOpacity(0.7);
+  actor.getProperty().setOpacity(1.0); // Fully opaque by default
 
   renderer.addActor(actor);
   state.actors.mesh = actor;

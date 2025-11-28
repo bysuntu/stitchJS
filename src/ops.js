@@ -153,7 +153,7 @@ export function traceBoundaryPolylinesOptimized(polyData, boundaryData, corners)
   const pointData = points.getData();
 
   const cornerIds = corners.map(c => c.pointId);
-  const polylines = [];
+  const polyLineArray = [];
 
   const neighborCells = new Map();
 
@@ -190,7 +190,6 @@ export function traceBoundaryPolylinesOptimized(polyData, boundaryData, corners)
       polyLine.push([n, r, c, a]);
       tracePolyline(polyLine, adjacencyMap);
     })
-
   }
 
   corners.forEach(corner => {
@@ -214,9 +213,33 @@ export function traceBoundaryPolylinesOptimized(polyData, boundaryData, corners)
       tracePolyline(polyLine, adjacencyMap);
 
       // Save the completed polyline
-      polylines.push(polyLine);
+      polyLineArray.push(polyLine);
     })
   })
+
+  // Convert polyLineArray to the format expected by index.js
+  // Each polyline needs: { positions: [[x,y,z], ...], euclideanLength: number }
+  const polylines = polyLineArray.map(polyLine => {
+    const positions = polyLine.map(([pointId]) => {
+      const idx = pointId * 3;
+      return [pointData[idx], pointData[idx + 1], pointData[idx + 2]];
+    });
+
+    // Calculate euclidean length
+    let euclideanLength = 0;
+    for (let i = 1; i < positions.length; i++) {
+      const dx = positions[i][0] - positions[i - 1][0];
+      const dy = positions[i][1] - positions[i - 1][1];
+      const dz = positions[i][2] - positions[i - 1][2];
+      euclideanLength += Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    return {
+      positions,
+      euclideanLength,
+      pointCount: positions.length
+    };
+  });
 
   return polylines;
 }

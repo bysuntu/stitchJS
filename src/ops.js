@@ -1,5 +1,7 @@
 // Core operations for boundary detection and polyline tracing
 
+import { a } from "@kitware/vtk.js/macros2";
+
 export function detectBoundaryEdgesSTLWithAdjacency(polyData) {
   const cells = polyData.getPolys();
   const cellData = cells.getData();
@@ -136,7 +138,7 @@ export function detectSharpCornersWithMap(polyData, boundaryData, angleThreshold
         pointId,
         position: [px, py, pz],
         angle,
-        neighbors: Array.from(neighbors)
+        neighbors: Array.from(neighbors).map(n => n[0])
       });
     }
   });
@@ -150,91 +152,83 @@ export function traceBoundaryPolylinesOptimized(polyData, boundaryData, corners)
   const points = polyData.getPoints();
   const pointData = points.getData();
 
-  // Map corner IDs to corner objects for easy lookup
-  const cornerMap = new Map(corners.map(c => [c.pointId, c]));
-
-  // Track which edges have been used
-  const usedEdges = new Set();
-  const makeEdgeKey = (p1, p2) => p1 < p2 ? `${p1},${p2}` : `${p2},${p1}`;
-
+  const cornerIds = corners.map(c => c.pointId);
   const polylines = [];
 
-  // Process each corner
-  for (const corner of corners) {
-    const startId = corner.pointId;
-    const neighbors = Array.from(adjacencyMap.get(startId) || []);
+  const neighborCells = new Map();
 
-    if (neighbors.length !== 2) continue;
+  // tracing down along the polyline
+  const tracePolyline = (polyLine, adjacencyMap) => {
 
-    // Trace both directions from corner
-    for (const firstNeighbor of neighbors) {
-      const startEdge = makeEdgeKey(startId, firstNeighbor);
-      if (usedEdges.has(startEdge)) continue;
-
-      // Build polyline
-      const pointIds = [startId];
-      const positions = [[
-        pointData[startId * 3],
-        pointData[startId * 3 + 1],
-        pointData[startId * 3 + 2]
-      ]];
-
-      let prev = startId;
-      let curr = firstNeighbor;
-      usedEdges.add(startEdge);
-
-      // Trace until hitting another corner
-      while (curr !== undefined) {
-        // Add current point
-        pointIds.push(curr);
-        positions.push([
-          pointData[curr * 3],
-          pointData[curr * 3 + 1],
-          pointData[curr * 3 + 2]
-        ]);
-
-        // Check if we hit a corner
-        if (cornerMap.has(curr)) break;
-
-        // Get next point
-        const currNeighbors = Array.from(adjacencyMap.get(curr) || []);
-        if (currNeighbors.length !== 2) break;
-
-        const next = currNeighbors[0] === prev ? currNeighbors[1] : currNeighbors[0];
-
-        const edgeKey = makeEdgeKey(curr, next);
-        if (usedEdges.has(edgeKey)) break;
-        usedEdges.add(edgeKey);
-
-        prev = curr;
-        curr = next;
-      }
-
-      // Store polyline info
-      if (pointIds.length >= 2) {
-        const endId = pointIds[pointIds.length - 1];
-
-        // Calculate euclidean length
-        let euclideanLength = 0;
-        for (let i = 1; i < positions.length; i++) {
-          const dx = positions[i][0] - positions[i-1][0];
-          const dy = positions[i][1] - positions[i-1][1];
-          const dz = positions[i][2] - positions[i-1][2];
-          euclideanLength += Math.sqrt(dx*dx + dy*dy + dz*dz);
-        }
-
-        polylines.push({
-          pointIds,
-          positions,
-          startCorner: cornerMap.get(startId) || null,
-          endCorner: cornerMap.get(endId) || null,
-          numPoints: pointIds.length,
-          isClosed: startId === endId,
-          euclideanLength
-        });
-      }
+    // Last element
+    const [neighborId,rotation, cellId, apexId] = polyLine[polyLine.length - 1];
+    // Last point
+    if (cornerIds.includes(neighborId) || adjacencyMap.get(neighborId).size !== 2)
+    {
+      return;
     }
+    // It has more neighbors
+    // First element
+    adjacencyMap.get(neighborId).forEach(([n, r, c, a]) => {
+      // n is the same as the previous element
+      // Check if polyLine has at least 2 elements before accessing
+      if (polyLine.length < 2) return;
+
+      const prevId = polyLine[polyLine.length - 2][0];
+      if (n === prevId || (neighborCells.has(c) && neighborCells.get(c)[a] === 1))
+        return;
+
+      if (!neighborCells.has(c))
+      {
+        const apex_ = [0, 0, 0];
+        apex_[a] = 1;
+        neighborCells.set(c, apex_);
+      }
+      else if (neighborCells.get(c)[a] === 0)
+      {
+        neighborCells.get(c)[a] = 1;
+      }
+
+      polyLine.push([n, r, c, a]);
+      tracePolyline(polyLine, adjacencyMap);
+    })
+
   }
+
+  corners.forEach(corner => {
+    const cornerId = corner.pointId;
+    const neighbors = adjacencyMap.get(cornerId);
+    // Multiple neighbors and loop over them
+    Array.from(neighbors).forEach(([neighborId, rotation, cellId, apexId]) => {
+      // The first element of polyLine is different - should be array of tuples
+      const polyLine = [[cornerId, rotation, cellId, apexId]];
+      // Never touched
+      if (!neighborCells.has(cellId))
+      {
+        const apex_ = [0, 0, 0];
+        apex_[apexId] = 1;
+        neighborCells.set(cellId, apex_);
+        polyLine.push([neighborId,rotation, cellId, apexId]);
+        tracePolyline(polyLine, adjacencyMap);
+        polylines.push(polyLine);
+      }
+      // Touch but different side
+      else if (neighborCells.has(cellId) && neighborCells.get(cellId)[apexId] === 0)
+      {
+        const apex_ = neighborCells.get(cellId);
+        apex_[apexId] = 1;
+        neighborCells.set(cellId, apex_);
+        polyLine.push([neighborId, rotation, cellId, apexId]);
+        tracePolyline(polyLine, adjacencyMap);
+        polylines.push(polyLine);
+      }
+      // Already touched
+      else
+      {
+        return;
+      }
+    })
+  })
 
   return polylines;
 }

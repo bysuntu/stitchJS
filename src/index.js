@@ -32,7 +32,8 @@ let state = {
     mesh: null,
     boundary: null,
     corners: null,
-    polylines: null
+    polylines: null,
+    wireframe: null
   }
 };
 
@@ -76,6 +77,7 @@ const showMesh = document.getElementById('showMesh');
 const showBoundary = document.getElementById('showBoundary');
 const showCorners = document.getElementById('showCorners');
 const showPolylines = document.getElementById('showPolylines');
+const showWireframe = document.getElementById('showWireframe');
 
 // Color inputs
 const meshColor = document.getElementById('meshColor');
@@ -102,6 +104,7 @@ showMesh.addEventListener('change', () => updateVisibility());
 showBoundary.addEventListener('change', () => updateVisibility());
 showCorners.addEventListener('change', () => updateVisibility());
 showPolylines.addEventListener('change', () => updateVisibility());
+showWireframe.addEventListener('change', () => updateVisibility());
 
 meshColor.addEventListener('change', () => updateColors());
 boundaryColor.addEventListener('change', () => updateColors());
@@ -177,6 +180,9 @@ function visualizeMesh(polyData) {
 
   renderer.addActor(actor);
   state.actors.mesh = actor;
+
+  // Also create wireframe when mesh is loaded
+  visualizeWireframe(polyData);
 
   renderer.resetCamera();
   renderWindow.render();
@@ -394,6 +400,81 @@ function visualizePolylines(polylines) {
   renderWindow.render();
 }
 
+function visualizeWireframe(polyData) {
+  // Remove old wireframe actor
+  if (state.actors.wireframe) {
+    renderer.removeActor(state.actors.wireframe);
+    state.actors.wireframe = null;
+  }
+
+  if (!polyData) return;
+
+  // Create wireframe from all edges of the mesh
+  const polys = polyData.getPolys();
+  const points = polyData.getPoints();
+  const cellData = polys.getData();
+
+  const edgeSet = new Set();
+  const edgesArray = [];
+
+  // Extract all edges from triangles
+  let offset = 0;
+  const numCells = polyData.getNumberOfPolys();
+
+  for (let cellId = 0; cellId < numCells; cellId++) {
+    const cellSize = cellData[offset++];
+    const cellPoints = [];
+
+    for (let i = 0; i < cellSize; i++) {
+      cellPoints.push(cellData[offset++]);
+    }
+
+    // Create edges for this cell (triangle)
+    for (let i = 0; i < cellSize; i++) {
+      const p1 = cellPoints[i];
+      const p2 = cellPoints[(i + 1) % cellSize];
+
+      // Create unique edge key
+      const edgeKey = p1 < p2 ? `${p1},${p2}` : `${p2},${p1}`;
+
+      if (!edgeSet.has(edgeKey)) {
+        edgeSet.add(edgeKey);
+        edgesArray.push(p1, p2);
+      }
+    }
+  }
+
+  // Create polydata for wireframe
+  const wireframePolyData = vtkPolyData.newInstance();
+  wireframePolyData.setPoints(points);
+
+  // Create lines for wireframe
+  const lines = vtkCellArray.newInstance();
+  const linesData = [];
+
+  for (let i = 0; i < edgesArray.length; i += 2) {
+    linesData.push(2, edgesArray[i], edgesArray[i + 1]);
+  }
+
+  lines.setData(Uint32Array.from(linesData));
+  wireframePolyData.setLines(lines);
+
+  const mapper = vtkMapper.newInstance();
+  mapper.setInputData(wireframePolyData);
+
+  const actor = vtkActor.newInstance();
+  actor.setMapper(mapper);
+
+  // Yellow color
+  actor.getProperty().setColor(1.0, 1.0, 0.0);
+  actor.getProperty().setLineWidth(1);
+
+  renderer.addActor(actor);
+  state.actors.wireframe = actor;
+
+  renderWindow.render();
+}
+
 function updatePolylineList() {
   if (!state.polylines || state.polylines.length === 0) {
     polylineList.innerHTML = 'No polylines detected';
@@ -429,6 +510,9 @@ function updateVisibility() {
   }
   if (state.actors.polylines) {
     state.actors.polylines.setVisibility(showPolylines.checked);
+  }
+  if (state.actors.wireframe) {
+    state.actors.wireframe.setVisibility(showWireframe.checked);
   }
   renderWindow.render();
 }

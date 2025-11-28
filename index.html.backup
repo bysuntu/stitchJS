@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STL Boundary & Polyline Viewer</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      overflow: hidden;
+    }
+
+    #container {
+      display: flex;
+      height: 100vh;
+    }
+
+    #sidebar {
+      width: 320px;
+      background: #252525;
+      padding: 20px;
+      overflow-y: auto;
+      border-right: 1px solid #404040;
+    }
+
+    #viewer {
+      flex: 1;
+      position: relative;
+      background: #0a0a0a;
+    }
+
+    #viewer canvas {
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    h1 {
+      font-size: 20px;
+      margin-bottom: 20px;
+      color: #fff;
+    }
+
+    .section {
+      margin-bottom: 25px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #999;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      letter-spacing: 0.5px;
+    }
+
+    .file-input-wrapper {
+      position: relative;
+      overflow: hidden;
+      display: inline-block;
+      width: 100%;
+    }
+
+    .file-input-wrapper input[type=file] {
+      position: absolute;
+      left: -9999px;
+    }
+
+    .file-input-label {
+      display: block;
+      padding: 12px 16px;
+      background: #007acc;
+      color: white;
+      text-align: center;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .file-input-label:hover {
+      background: #0098ff;
+    }
+
+    .file-name {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #999;
+      word-break: break-all;
+    }
+
+    .control-group {
+      margin-bottom: 15px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 6px;
+      color: #ccc;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      margin-bottom: 4px;
+    }
+
+    input[type="number"] {
+      width: 100%;
+      padding: 8px;
+      background: #1a1a1a;
+      border: 1px solid #404040;
+      border-radius: 4px;
+      color: #e0e0e0;
+      font-size: 13px;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+      margin-right: 8px;
+    }
+
+    .checkbox-group label {
+      margin: 0;
+      cursor: pointer;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px;
+      background: #404040;
+      border: 1px solid #555;
+      border-radius: 4px;
+      color: #e0e0e0;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background 0.2s;
+    }
+
+    button:hover {
+      background: #4a4a4a;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .stats {
+      background: #1a1a1a;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .stats-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .stats-label {
+      color: #999;
+    }
+
+    .stats-value {
+      color: #fff;
+      font-weight: 500;
+    }
+
+    .playback-controls {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 10px;
+    }
+
+    .control-btn {
+      flex: 1;
+      padding: 8px;
+      background: #404040;
+      border: 1px solid #555;
+      border-radius: 4px;
+      color: #e0e0e0;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background 0.2s;
+    }
+
+    .control-btn:hover:not(:disabled) {
+      background: #4a4a4a;
+    }
+
+    .control-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .control-btn.playing {
+      background: #007acc;
+      color: white;
+    }
+
+    .current-polyline {
+      background: #1a1a1a;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-bottom: 8px;
+      text-align: center;
+      color: #00ffff;
+      font-weight: 500;
+    }
+
+    .polyline-list {
+      max-height: 150px;
+      overflow-y: auto;
+      background: #1a1a1a;
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+
+    .polyline-item {
+      padding: 6px;
+      margin-bottom: 4px;
+      background: #252525;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .polyline-item:hover {
+      background: #303030;
+    }
+
+    .polyline-item.selected {
+      background: #007acc;
+    }
+
+    .loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.8);
+      padding: 20px 40px;
+      border-radius: 8px;
+      color: white;
+      font-size: 14px;
+      z-index: 1000;
+    }
+
+    .color-input {
+      width: 100%;
+      height: 36px;
+      border: 1px solid #404040;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    #errorMessage {
+      background: #d32f2f;
+      color: white;
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 15px;
+      display: none;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div id="sidebar">
+      <h1>STL Boundary Viewer</h1>
+
+      <div id="errorMessage"></div>
+
+      <div class="section">
+        <div class="section-title">Load File</div>
+        <div class="file-input-wrapper">
+          <input type="file" id="fileInput" accept=".stl" />
+          <label for="fileInput" class="file-input-label">Choose STL File</label>
+        </div>
+        <div class="file-name" id="fileName">No file selected</div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Detection Settings</div>
+        <div class="control-group">
+          <label for="angleThreshold">
+            Corner Angle Threshold: <span id="angleValue">30</span>°
+          </label>
+          <input type="range" id="angleThreshold" min="5" max="90" value="30" step="5">
+        </div>
+        <button id="processBtn" disabled>Process STL</button>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Visibility</div>
+        <div class="checkbox-group">
+          <input type="checkbox" id="showMesh" checked>
+          <label for="showMesh">Show Mesh</label>
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" id="showBoundary" checked>
+          <label for="showBoundary">Show Boundary Edges</label>
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" id="showCorners" checked>
+          <label for="showCorners">Show Corners</label>
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" id="showPolylines" checked>
+          <label for="showPolylines">Show Polylines</label>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Colors</div>
+        <div class="control-group">
+          <label>Mesh Color</label>
+          <input type="color" id="meshColor" class="color-input" value="#808080">
+        </div>
+        <div class="control-group">
+          <label>Boundary Color</label>
+          <input type="color" id="boundaryColor" class="color-input" value="#ff0000">
+        </div>
+        <div class="control-group">
+          <label>Corner Color</label>
+          <input type="color" id="cornerColor" class="color-input" value="#00ff00">
+        </div>
+        <div class="control-group">
+          <label>Polyline Color</label>
+          <input type="color" id="polylineColor" class="color-input" value="#00ffff">
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Statistics</div>
+        <div class="stats" id="stats">
+          <div class="stats-row">
+            <span class="stats-label">Vertices:</span>
+            <span class="stats-value" id="statVertices">-</span>
+          </div>
+          <div class="stats-row">
+            <span class="stats-label">Triangles:</span>
+            <span class="stats-value" id="statTriangles">-</span>
+          </div>
+          <div class="stats-row">
+            <span class="stats-label">Boundary Edges:</span>
+            <span class="stats-value" id="statBoundaryEdges">-</span>
+          </div>
+          <div class="stats-row">
+            <span class="stats-label">Corners:</span>
+            <span class="stats-value" id="statCorners">-</span>
+          </div>
+          <div class="stats-row">
+            <span class="stats-label">Polylines:</span>
+            <span class="stats-value" id="statPolylines">-</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Polylines</div>
+        <div class="playback-controls">
+          <button id="firstBtn" class="control-btn" title="First" disabled>⏮</button>
+          <button id="prevBtn" class="control-btn" title="Previous" disabled>◀</button>
+          <button id="playBtn" class="control-btn" title="Play/Stop" disabled>▶</button>
+          <button id="nextBtn" class="control-btn" title="Next" disabled>▶</button>
+          <button id="lastBtn" class="control-btn" title="Last" disabled>⏭</button>
+        </div>
+        <div class="current-polyline" id="currentPolyline">No polyline selected</div>
+        <div class="control-group">
+          <label for="cellOpacity">
+            Cell Transparency: <span id="opacityValue">100</span>%
+          </label>
+          <input type="range" id="cellOpacity" min="0" max="100" value="100" step="5">
+        </div>
+      </div>
+    </div>
+
+    <div id="viewer"></div>
+    <div id="loading" class="loading" style="display: none;">Processing...</div>
+  </div>
+
+  <script type="module" src="/src/index.js"></script>
+</body>
+</html>

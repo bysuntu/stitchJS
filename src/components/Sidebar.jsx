@@ -3,6 +3,8 @@ import React, { useRef, useEffect } from 'react';
 function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry, processedData, playback, onPlaybackChange }) {
   const fileInputRef = useRef(null);
   const playIntervalRef = useRef(null);
+  const playbackRef = useRef(playback);
+  const processedDataRef = useRef(processedData);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -26,35 +28,44 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
   };
 
   const showPolyline = (index) => {
-    if (!processedData?.polylines) return;
-    const clampedIndex = Math.max(0, Math.min(index, processedData.polylines.length - 1));
+    const data = processedDataRef.current;
+    if (!data?.polylines) return;
+    const clampedIndex = Math.max(0, Math.min(index, data.polylines.length - 1));
     onPlaybackChange({ currentIndex: clampedIndex });
 
     // Log polyline details
-    const polyline = processedData.polylines[clampedIndex];
-    console.log(`\n=== Polyline ${clampedIndex + 1}/${processedData.polylines.length} ===`);
+    const polyline = data.polylines[clampedIndex];
+    console.log(`\n=== Polyline ${clampedIndex + 1}/${data.polylines.length} ===`);
     console.log(`Points: ${polyline.pointCount}, Length: ${polyline.euclideanLength}`);
     console.log(`Point IDs: [${polyline.pointIds.join(', ')}]`);
   };
+
+  // Update refs when props change
+  useEffect(() => {
+    playbackRef.current = playback;
+  }, [playback]);
+
+  useEffect(() => {
+    processedDataRef.current = processedData;
+  }, [processedData]);
 
   // Handle playback
   useEffect(() => {
     if (playback.isPlaying && processedData?.polylines) {
       playIntervalRef.current = setInterval(() => {
-        onPlaybackChange(prev => {
-          const nextIndex = (prev.currentIndex + 1) % processedData.polylines.length;
-          showPolyline(nextIndex);
-          return { currentIndex: nextIndex };
-        });
+        const currentIndex = playbackRef.current.currentIndex;
+        const nextIndex = (currentIndex + 1) % processedData.polylines.length;
+        showPolyline(nextIndex);
       }, playback.speed);
     }
 
     return () => {
       if (playIntervalRef.current) {
         clearInterval(playIntervalRef.current);
+        playIntervalRef.current = null;
       }
     };
-  }, [playback.isPlaying, playback.speed, processedData, onPlaybackChange]);
+  }, [playback.isPlaying, playback.speed, processedData]);
 
   const currentPolyline = processedData?.polylines?.[playback.currentIndex];
 

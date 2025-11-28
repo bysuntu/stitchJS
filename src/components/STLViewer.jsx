@@ -2,7 +2,10 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useLoader } from '@react-three/fiber';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import * as THREE from 'three';
-import { mergePoints, removeDegenerateCells } from '../mergePointsThree';
+import vtkPolyData from '@kitware/vtk.js/Common/DataModel/PolyData';
+import vtkPoints from '@kitware/vtk.js/Common/Core/Points';
+import vtkCellArray from '@kitware/vtk.js/Common/Core/CellArray';
+import { removeDuplicatePoints } from '../mergePoints';
 import { threeToPolyData } from '../geometryAdapter';
 import {
   detectBoundaryEdgesSTLWithAdjacency,
@@ -10,6 +13,98 @@ import {
   detechBoundaryPolylines,
   analyzePolylines
 } from '../ops';
+
+// Helper function to remove degenerate cells (same as VTK version)
+function removeDegenerateCells(polyData) {
+  const cells = polyData.getPolys();
+  const cellData = cells.getData();
+  const numCells = polyData.getNumberOfPolys();
+  const points = polyData.getPoints();
+  const pointData = points.getData();
+
+  const validCells = [];
+  let offset = 0;
+  let duplicateCount = 0;
+  let collinearCount = 0;
+
+  for (let cellId = 0; cellId < numCells; cellId++) {
+    const numPts = cellData[offset];
+    const pts = [];
+    for (let i = 0; i < numPts; i++) {
+      pts.push(cellData[offset + 1 + i]);
+    }
+
+    // Check if triangle has duplicate vertices
+    const hasDuplicates = pts[0] === pts[1] || pts[1] === pts[2] || pts[0] === pts[2];
+
+    // Check for collinear vertices (zero area)
+    let isCollinear = false;
+    if (!hasDuplicates && numPts === 3) {
+      const v0 = [pointData[pts[0]*3], pointData[pts[0]*3+1], pointData[pts[0]*3+2]];
+      const v1 = [pointData[pts[1]*3], pointData[pts[1]*3+1], pointData[pts[1]*3+2]];
+      const v2 = [pointData[pts[2]*3], pointData[pts[2]*3+1], pointData[pts[2]*3+2]];
+
+      const edge1 = [v1[0]-v0[0], v1[1]-v0[1], v1[2]-v0[2]];
+      const edge2 = [v2[0]-v0[0], v2[1]-v0[1], v2[2]-v0[2]];
+
+      const cross = [
+        edge1[1]*edge2[2] - edge1[2]*edge2[1],
+        edge1[2]*edge2[0] - edge1[0]*edge2[2],
+        edge1[0]*edge2[1] - edge1[1]*edge2[0]
+      ];
+      const area = Math.sqrt(cross[0]*cross[0] + cross[1]*cross[1] + cross[2]*cross[2]);
+
+      isCollinear = area < 1e-10;
+    }
+
+    if (hasDuplicates) {
+      duplicateCount++;
+    } else if (isCollinear) {
+      collinearCount++;
+    } else {
+      validCells.push(numPts, ...pts);
+    }
+
+    offset += numPts + 1;
+  }
+
+  console.log(`Removed ${duplicateCount} duplicate and ${collinearCount} collinear triangles`);
+
+  const newPolyData = vtkPolyData.newInstance();
+  newPolyData.setPoints(points);
+  const newCells = vtkCellArray.newInstance();
+  newCells.setData(Uint32Array.from(validCells));
+  newPolyData.setPolys(newCells);
+
+  return newPolyData;
+}
+
+// Helper function to convert VTK polyData to Three.js geometry
+function polyDataToThreeGeometry(polyData) {
+  const points = polyData.getPoints();
+  const pointData = points.getData();
+  const cells = polyData.getPolys();
+  const cellData = cells.getData();
+
+  // Extract indices
+  const indices = [];
+  let offset = 0;
+  const numCells = polyData.getNumberOfPolys();
+
+  for (let i = 0; i < numCells; i++) {
+    const numPts = cellData[offset++];
+    for (let j = 0; j < numPts; j++) {
+      indices.push(cellData[offset++]);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pointData), 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+
+  return geometry;
+}
 
 function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProcess, playback }) {
   const [geometry, setGeometry] = useState(null);
@@ -24,24 +119,31 @@ function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProce
       const loader = new STLLoader();
       const geometry = loader.parse(e.target.result);
 
-      // Process geometry: exact merge → proximity merge → remove degenerates
+      // Process geometry using VTK.js methods (same as VTK version)
       console.log('Loaded STL:', geometry.attributes.position.count, 'points');
 
-      // Step 1: Exact duplicate removal
-      const exactMerged = mergePoints(geometry, 0);
-      console.log('After exact duplicate removal:', exactMerged.attributes.position.count, 'points');
+      // Convert Three.js geometry to VTK polyData
+      const rawPolyData = threeToPolyData(geometry);
 
-      // Step 2: Proximity-based merging
-      const proximityMerged = mergePoints(exactMerged, settings.proximityTolerance);
-      console.log('After proximity merging:', proximityMerged.attributes.position.count, 'points');
+      // Step 1: Merge exact duplicates (tolerance = 0)
+      const cleanPolyData = removeDuplicatePoints(rawPolyData, 0);
+      console.log('After exact duplicate removal:', cleanPolyData.getNumberOfPoints(), 'points');
 
-      // Step 3: Remove degenerate cells
-      const cleanGeometry = removeDegenerateCells(proximityMerged);
-      console.log('After removing degenerate cells:', cleanGeometry.attributes.position.count, 'points');
+      // Step 2: Apply proximity-based merging
+      const proximityTolerance = settings.proximityTolerance || 1e-5;
+      const mergedPolyData = removeDuplicatePoints(cleanPolyData, proximityTolerance);
+      console.log('After proximity merging (tolerance:', proximityTolerance + '):', mergedPolyData.getNumberOfPoints(), 'points');
 
-      setGeometry(cleanGeometry);
+      // Step 3: Remove degenerate triangles
+      const finalPolyData = removeDegenerateCells(mergedPolyData);
+      console.log('After removing degenerate cells:', finalPolyData.getNumberOfPoints(), 'points', finalPolyData.getNumberOfPolys(), 'cells');
+
+      // Convert back to Three.js geometry
+      const processedGeometry = polyDataToThreeGeometry(finalPolyData);
+
+      setGeometry(processedGeometry);
       setProcessedData(null);
-      onGeometryLoaded(cleanGeometry);
+      onGeometryLoaded(processedGeometry);
     };
 
     reader.readAsArrayBuffer(stlFile);
@@ -196,23 +298,24 @@ function Corners({ corners, geometry, color }) {
 // Polylines Component
 function Polylines({ polylines, geometry, color, currentIndex, cellOpacity }) {
   const positions = geometry.attributes.position.array;
-  const indices = geometry.index.array;
 
   if (currentIndex < 0 || currentIndex >= polylines.length) return null;
 
   const polyline = polylines[currentIndex];
 
   // Build polyline geometry
-  const linePoints = useMemo(() => {
+  const lineGeometry = useMemo(() => {
     const pts = [];
     polyline.positions.forEach(([x, y, z]) => {
       pts.push(x, y, z);
     });
-    return new Float32Array(pts);
-  }, [polyline]);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pts), 3));
+    return geo;
+  }, [currentIndex, polyline.positions]);
 
   // Build highlighted cells geometry
-  const cellTriangles = useMemo(() => {
+  const cellGeometry = useMemo(() => {
     const triangles = [];
 
     polyline.cellDetails.forEach(cell => {
@@ -224,40 +327,46 @@ function Polylines({ polylines, geometry, color, currentIndex, cellOpacity }) {
       );
     });
 
-    return new Float32Array(triangles);
-  }, [polyline, positions]);
+    if (triangles.length === 0) return null;
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(triangles), 3));
+    return geo;
+  }, [currentIndex, polyline.cellDetails, positions]);
+
+  // Cleanup geometries on unmount or when they change
+  useEffect(() => {
+    return () => {
+      if (lineGeometry) lineGeometry.dispose();
+      if (cellGeometry) cellGeometry.dispose();
+    };
+  }, [lineGeometry, cellGeometry]);
 
   return (
-    <group>
+    <group key={`polyline-${currentIndex}`}>
       {/* Polyline */}
-      <line>
-        <bufferGeometry>
-          <bufferAttribute
-            attach="attributes-position"
-            count={linePoints.length / 3}
-            array={linePoints}
-            itemSize={3}
-          />
-        </bufferGeometry>
-        <lineBasicMaterial color={color} linewidth={4} />
+      <line key={`line-${currentIndex}`} geometry={lineGeometry}>
+        <lineBasicMaterial
+          color={color}
+          linewidth={4}
+          depthTest={true}
+          depthWrite={true}
+        />
       </line>
 
       {/* Highlighted Cells */}
-      {cellTriangles.length > 0 && (
-        <mesh>
-          <bufferGeometry>
-            <bufferAttribute
-              attach="attributes-position"
-              count={cellTriangles.length / 3}
-              array={cellTriangles}
-              itemSize={3}
-            />
-          </bufferGeometry>
+      {cellGeometry && (
+        <mesh key={`mesh-${currentIndex}`} geometry={cellGeometry}>
           <meshBasicMaterial
             color="#0088ff"
             opacity={cellOpacity}
             transparent={cellOpacity < 1}
             side={THREE.DoubleSide}
+            depthTest={true}
+            depthWrite={cellOpacity >= 1}
+            polygonOffset={true}
+            polygonOffsetFactor={-1}
+            polygonOffsetUnits={-1}
           />
         </mesh>
       )}

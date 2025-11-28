@@ -1,10 +1,14 @@
 // Adapter to convert between Three.js BufferGeometry and vtk.js-style data format
 // This allows our existing algorithms to work with Three.js geometry
 
+import vtkPolyData from '@kitware/vtk.js/Common/DataModel/PolyData';
+import vtkPoints from '@kitware/vtk.js/Common/Core/Points';
+import vtkCellArray from '@kitware/vtk.js/Common/Core/CellArray';
+
 /**
- * Convert Three.js BufferGeometry to vtk.js-style polyData format
+ * Convert Three.js BufferGeometry to vtk.js polyData format
  * @param {THREE.BufferGeometry} geometry - Three.js geometry
- * @returns {Object} - vtk.js-style polyData object
+ * @returns {vtkPolyData} - Real vtk.js polyData object
  */
 export function threeToPolyData(geometry) {
   // Ensure geometry is indexed
@@ -32,17 +36,16 @@ export function threeToPolyData(geometry) {
     }
   }
 
-  // Create vtk.js-style polyData object
-  const polyData = {
-    getNumberOfPoints: () => positions.length / 3,
-    getNumberOfPolys: () => cellData.length / 4, // Each cell: 3 (numPts) + 3 indices
-    getPoints: () => ({
-      getData: () => positions
-    }),
-    getPolys: () => ({
-      getData: () => cellData
-    })
-  };
+  // Create real VTK polyData instance
+  const polyData = vtkPolyData.newInstance();
+
+  const points = vtkPoints.newInstance();
+  points.setData(Float32Array.from(positions));
+  polyData.setPoints(points);
+
+  const cells = vtkCellArray.newInstance();
+  cells.setData(Uint32Array.from(cellData));
+  polyData.setPolys(cells);
 
   return polyData;
 }

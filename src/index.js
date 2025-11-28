@@ -178,6 +178,8 @@ async function handleFileSelect(event) {
 
     console.log('Loaded STL:', rawPolyData.getNumberOfPoints(), 'points', rawPolyData.getNumberOfPolys(), 'cells');
 
+    // DEBUG: Commenting out merging and degenerate removal to debug holes
+    /*
     // Step 1: Merge exact duplicates first (required for proper STL conversion)
     const cleanPolyData = removeDuplicatePoints(rawPolyData, 0);
     console.log('After exact duplicate removal:', cleanPolyData.getNumberOfPoints(), 'points');
@@ -190,6 +192,11 @@ async function handleFileSelect(event) {
     // Step 3: Remove degenerate triangles (triangles with duplicate vertices created by merging)
     state.polyData = removeDegenerateCells(mergedPolyData);
     console.log('After removing degenerate cells:', state.polyData.getNumberOfPoints(), 'points', state.polyData.getNumberOfPolys(), 'cells');
+    */
+
+    // DEBUG: Use raw polydata directly
+    state.polyData = rawPolyData;
+    console.log('Using raw polydata without merging or degenerate removal');
 
     // Update stats
     const numPoints = state.polyData.getNumberOfPoints();

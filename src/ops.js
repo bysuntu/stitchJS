@@ -157,6 +157,17 @@ export function traceBoundaryPolylinesOptimized(polyData, boundaryData, corners)
 
   const neighborCells = new Map();
 
+  // Helper function to mark cell apex as visited
+  const markCellApex = (cellId, apexId) => {
+    if (!neighborCells.has(cellId)) {
+      const apex_ = [0, 0, 0];
+      apex_[apexId] = 1;
+      neighborCells.set(cellId, apex_);
+    } else {
+      neighborCells.get(cellId)[apexId] = 1;
+    }
+  };
+
   // tracing down along the polyline
   const tracePolyline = (polyLine, adjacencyMap) => {
 
@@ -171,24 +182,11 @@ export function traceBoundaryPolylinesOptimized(polyData, boundaryData, corners)
     // First element
     adjacencyMap.get(neighborId).forEach(([n, r, c, a]) => {
       // n is the same as the previous element
-      // Check if polyLine has at least 2 elements before accessing
-      if (polyLine.length < 2) return;
-
-      const prevId = polyLine[polyLine.length - 2][0];
+      const prevId = polyLine.length < 2 ? n : polyLine[polyLine.length - 2][0];
       if (n === prevId || (neighborCells.has(c) && neighborCells.get(c)[a] === 1))
         return;
 
-      if (!neighborCells.has(c))
-      {
-        const apex_ = [0, 0, 0];
-        apex_[a] = 1;
-        neighborCells.set(c, apex_);
-      }
-      else if (neighborCells.get(c)[a] === 0)
-      {
-        neighborCells.get(c)[a] = 1;
-      }
-
+      markCellApex(c, a);
       polyLine.push([n, r, c, a]);
       tracePolyline(polyLine, adjacencyMap);
     })
@@ -200,33 +198,23 @@ export function traceBoundaryPolylinesOptimized(polyData, boundaryData, corners)
     const neighbors = adjacencyMap.get(cornerId);
     // Multiple neighbors and loop over them
     Array.from(neighbors).forEach(([neighborId, rotation, cellId, apexId]) => {
-      // The first element of polyLine is different - should be array of tuples
-      const polyLine = [[cornerId, rotation, cellId, apexId]];
-      // Never touched
-      if (!neighborCells.has(cellId))
-      {
-        const apex_ = [0, 0, 0];
-        apex_[apexId] = 1;
-        neighborCells.set(cellId, apex_);
-        polyLine.push([neighborId,rotation, cellId, apexId]);
-        tracePolyline(polyLine, adjacencyMap);
-        polylines.push(polyLine);
-      }
-      // Touch but different side
-      else if (neighborCells.has(cellId) && neighborCells.get(cellId)[apexId] === 0)
-      {
-        const apex_ = neighborCells.get(cellId);
-        apex_[apexId] = 1;
-        neighborCells.set(cellId, apex_);
-        polyLine.push([neighborId, rotation, cellId, apexId]);
-        tracePolyline(polyLine, adjacencyMap);
-        polylines.push(polyLine);
-      }
-      // Already touched
-      else
-      {
+      // Skip if already visited from this apex
+      if (neighborCells.has(cellId) && neighborCells.get(cellId)[apexId] === 1) {
         return;
       }
+
+      // Mark cell/apex as visited
+      markCellApex(cellId, apexId);
+
+      // Initialize polyline starting from corner
+      const polyLine = [[cornerId, rotation, cellId, apexId]];
+      polyLine.push([neighborId, rotation, cellId, apexId]);
+
+      // Trace the polyline
+      tracePolyline(polyLine, adjacencyMap);
+
+      // Save the completed polyline
+      polylines.push(polyLine);
     })
   })
 

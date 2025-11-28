@@ -15,7 +15,7 @@ import vtkGlyph3DMapper from '@kitware/vtk.js/Rendering/Core/Glyph3DMapper';
 import {
   detectBoundaryEdgesSTLWithAdjacency,
   detectSharpCornersWithMap,
-  traceBoundaryPolylinesOptimized,
+  detechBoundaryPolylines,
   analyzePolylines
 } from './ops.js';
 
@@ -33,7 +33,14 @@ let state = {
     boundary: null,
     corners: null,
     polylines: null,
-    wireframe: null
+    wireframe: null,
+    highlightedCells: [] // Array of highlighted cell actors for each polyline
+  },
+  playback: {
+    currentIndex: -1,
+    isPlaying: false,
+    intervalId: null,
+    speed: 1000 // milliseconds per polyline
   }
 };
 
@@ -91,7 +98,14 @@ const statTriangles = document.getElementById('statTriangles');
 const statBoundaryEdges = document.getElementById('statBoundaryEdges');
 const statCorners = document.getElementById('statCorners');
 const statPolylines = document.getElementById('statPolylines');
-const polylineList = document.getElementById('polylineList');
+const currentPolyline = document.getElementById('currentPolyline');
+const firstBtn = document.getElementById('firstBtn');
+const prevBtn = document.getElementById('prevBtn');
+const playBtn = document.getElementById('playBtn');
+const nextBtn = document.getElementById('nextBtn');
+const lastBtn = document.getElementById('lastBtn');
+const cellOpacity = document.getElementById('cellOpacity');
+const opacityValue = document.getElementById('opacityValue');
 
 // Event listeners
 fileInput.addEventListener('change', handleFileSelect);
@@ -100,16 +114,45 @@ angleThreshold.addEventListener('input', (e) => {
   angleValue.textContent = e.target.value;
 });
 
+cellOpacity.addEventListener('input', (e) => {
+  opacityValue.textContent = e.target.value;
+  updateCellOpacity(e.target.value / 100);
+});
+
 showMesh.addEventListener('change', () => updateVisibility());
 showBoundary.addEventListener('change', () => updateVisibility());
 showCorners.addEventListener('change', () => updateVisibility());
 showPolylines.addEventListener('change', () => updateVisibility());
-showWireframe.addEventListener('change', () => updateVisibility());
+if (showWireframe) {
+  showWireframe.addEventListener('change', () => updateVisibility());
+}
 
 meshColor.addEventListener('change', () => updateColors());
 boundaryColor.addEventListener('change', () => updateColors());
 cornerColor.addEventListener('change', () => updateColors());
 polylineColor.addEventListener('change', () => updateColors());
+
+// Playback controls
+firstBtn.addEventListener('click', () => {
+  console.log('First button clicked');
+  showPolyline(0);
+});
+prevBtn.addEventListener('click', () => {
+  console.log('Prev button clicked');
+  showPolyline(state.playback.currentIndex - 1);
+});
+playBtn.addEventListener('click', () => {
+  console.log('Play button clicked, isPlaying:', state.playback.isPlaying);
+  togglePlayback();
+});
+nextBtn.addEventListener('click', () => {
+  console.log('Next button clicked');
+  showPolyline(state.playback.currentIndex + 1);
+});
+lastBtn.addEventListener('click', () => {
+  console.log('Last button clicked');
+  showPolyline(state.polylines ? state.polylines.length - 1 : 0);
+});
 
 function showError(message) {
   errorMessage.textContent = message;
@@ -133,16 +176,20 @@ async function handleFileSelect(event) {
     reader.parseAsArrayBuffer(arrayBuffer);
     const rawPolyData = reader.getOutputData();
 
-    console.log('Loaded STL:', rawPolyData.getNumberOfPoints(), 'points');
+    console.log('Loaded STL:', rawPolyData.getNumberOfPoints(), 'points', rawPolyData.getNumberOfPolys(), 'cells');
 
     // Step 1: Merge exact duplicates first (required for proper STL conversion)
     const cleanPolyData = removeDuplicatePoints(rawPolyData, 0);
     console.log('After exact duplicate removal:', cleanPolyData.getNumberOfPoints(), 'points');
 
     // Step 2: Apply proximity-based merging for close points
-    const proximityTolerance = 1e-6; // Adjust: 1e-6 = very close, 1e-3 = looser
-    state.polyData = removeDuplicatePoints(cleanPolyData, proximityTolerance);
-    console.log('After proximity merging:', state.polyData.getNumberOfPoints(), 'points');
+    const proximityTolerance = 1e-5; // Adjust: 1e-6 = very close, 1e-5 = slightly looser, 1e-3 = very loose
+    const mergedPolyData = removeDuplicatePoints(cleanPolyData, proximityTolerance);
+    console.log('After proximity merging (tolerance:', proximityTolerance + '):', mergedPolyData.getNumberOfPoints(), 'points');
+
+    // Step 3: Remove degenerate triangles (triangles with duplicate vertices created by merging)
+    state.polyData = removeDegenerateCells(mergedPolyData);
+    console.log('After removing degenerate cells:', state.polyData.getNumberOfPoints(), 'points', state.polyData.getNumberOfPolys(), 'cells');
 
     // Update stats
     const numPoints = state.polyData.getNumberOfPoints();
@@ -208,7 +255,7 @@ async function processSTL() {
       console.log(`  Found ${state.corners.length} corners`);
 
       console.log('Step 3: Tracing polylines...');
-      state.polylines = traceBoundaryPolylinesOptimized(state.polyData, state.boundaryData, state.corners);
+      state.polylines = detechBoundaryPolylines(state.polyData, state.boundaryData, state.corners);
       console.log(`  Created ${state.polylines.length} polylines`);
 
       // Analyze and sort
@@ -345,23 +392,29 @@ function visualizeCorners(corners) {
 }
 
 function visualizePolylines(polylines) {
-  // Remove old polylines actor
+  // Remove old polylines actors
   if (state.actors.polylines) {
-    renderer.removeActor(state.actors.polylines);
+    if (Array.isArray(state.actors.polylines)) {
+      state.actors.polylines.forEach(actor => renderer.removeActor(actor));
+    } else {
+      renderer.removeActor(state.actors.polylines);
+    }
   }
 
   if (polylines.length === 0) return;
 
-  // Create polylines
-  const polylinesPolyData = vtkPolyData.newInstance();
-  const polylinesPoints = vtkPoints.newInstance();
-  const lines = vtkCellArray.newInstance();
-
-  const pointsArray = [];
-  const linesArray = [];
-  let pointOffset = 0;
+  // Create separate actor for each polyline
+  const actors = [];
+  const color = hexToRgb(polylineColor.value);
 
   polylines.forEach(polyline => {
+    const polyData = vtkPolyData.newInstance();
+    const points = vtkPoints.newInstance();
+    const lines = vtkCellArray.newInstance();
+
+    const pointsArray = [];
+    const linesArray = [];
+
     const numPoints = polyline.positions.length;
 
     // Add points
@@ -372,32 +425,102 @@ function visualizePolylines(polylines) {
     // Add line connectivity
     linesArray.push(numPoints);
     for (let i = 0; i < numPoints; i++) {
-      linesArray.push(pointOffset + i);
+      linesArray.push(i);
     }
 
-    pointOffset += numPoints;
+    points.setData(Float32Array.from(pointsArray));
+    lines.setData(Uint32Array.from(linesArray));
+
+    polyData.setPoints(points);
+    polyData.setLines(lines);
+
+    const mapper = vtkMapper.newInstance();
+    mapper.setInputData(polyData);
+
+    const actor = vtkActor.newInstance();
+    actor.setMapper(mapper);
+    actor.getProperty().setColor(color[0], color[1], color[2]);
+    actor.getProperty().setLineWidth(4);
+
+    renderer.addActor(actor);
+    actors.push(actor);
   });
 
-  polylinesPoints.setData(Float32Array.from(pointsArray));
-  lines.setData(Uint32Array.from(linesArray));
+  state.actors.polylines = actors;
 
-  polylinesPolyData.setPoints(polylinesPoints);
-  polylinesPolyData.setLines(lines);
-
-  const mapper = vtkMapper.newInstance();
-  mapper.setInputData(polylinesPolyData);
-
-  const actor = vtkActor.newInstance();
-  actor.setMapper(mapper);
-
-  const color = hexToRgb(polylineColor.value);
-  actor.getProperty().setColor(color[0], color[1], color[2]);
-  actor.getProperty().setLineWidth(4);
-
-  renderer.addActor(actor);
-  state.actors.polylines = actor;
+  // Create highlighted cell actors for each polyline
+  createHighlightedCells(polylines);
 
   renderWindow.render();
+}
+
+function createHighlightedCells(polylines) {
+  // Remove old highlighted cell actors
+  if (state.actors.highlightedCells && state.actors.highlightedCells.length > 0) {
+    state.actors.highlightedCells.forEach(actor => {
+      if (actor) renderer.removeActor(actor);
+    });
+  }
+
+  state.actors.highlightedCells = [];
+
+  if (!state.polyData || polylines.length === 0) return;
+
+  const points = state.polyData.getPoints();
+  const pointData = points.getData();
+  const cells = state.polyData.getPolys();
+  const cellData = cells.getData();
+
+  // Create a highlighted actor for each polyline
+  polylines.forEach((polyline, idx) => {
+    if (!polyline.cellIds || polyline.cellIds.length === 0) {
+      state.actors.highlightedCells.push(null);
+      return;
+    }
+
+    // Create polydata with only the cells from this polyline
+    const highlightPolyData = vtkPolyData.newInstance();
+    const highlightPoints = vtkPoints.newInstance();
+    const highlightCells = vtkCellArray.newInstance();
+
+    // Reuse the same points
+    highlightPoints.setData(pointData);
+
+    // Extract only the cells for this polyline
+    const newCellData = [];
+    let offset = 0;
+
+    for (let cellId = 0; cellId < state.polyData.getNumberOfPolys(); cellId++) {
+      const numPts = cellData[offset];
+
+      if (polyline.cellIds.includes(cellId)) {
+        // Include this cell
+        newCellData.push(numPts);
+        for (let i = 0; i < numPts; i++) {
+          newCellData.push(cellData[offset + 1 + i]);
+        }
+      }
+
+      offset += numPts + 1;
+    }
+
+    highlightCells.setData(Uint32Array.from(newCellData));
+    highlightPolyData.setPoints(highlightPoints);
+    highlightPolyData.setPolys(highlightCells);
+
+    // Create mapper and actor
+    const mapper = vtkMapper.newInstance();
+    mapper.setInputData(highlightPolyData);
+
+    const actor = vtkActor.newInstance();
+    actor.setMapper(mapper);
+    actor.getProperty().setColor(0.0, 0.5, 1.0); // Blue
+    actor.getProperty().setOpacity(0.7);
+    actor.setVisibility(false); // Hidden by default
+
+    renderer.addActor(actor);
+    state.actors.highlightedCells.push(actor);
+  });
 }
 
 function visualizeWireframe(polyData) {
@@ -477,21 +600,159 @@ function visualizeWireframe(polyData) {
 
 function updatePolylineList() {
   if (!state.polylines || state.polylines.length === 0) {
-    polylineList.innerHTML = 'No polylines detected';
+    disablePlaybackControls();
     return;
   }
 
-  polylineList.innerHTML = '';
+  enablePlaybackControls();
+  if (state.polylines.length > 0) {
+    showPolyline(0); // Show first polyline by default
+  }
+}
 
-  state.polylines.forEach((polyline, idx) => {
-    const item = document.createElement('div');
-    item.className = 'polyline-item';
-    item.innerHTML = `
-      <strong>Polyline ${idx + 1}</strong><br>
-      Points: ${polyline.numPoints} | Length: ${polyline.euclideanLength.toFixed(2)}
-    `;
-    polylineList.appendChild(item);
-  });
+function showPolyline(index) {
+  if (!state.polylines || state.polylines.length === 0) return;
+
+  // Clamp index to valid range
+  index = Math.max(0, Math.min(index, state.polylines.length - 1));
+  state.playback.currentIndex = index;
+
+  // Hide all polylines and highlighted cells
+  if (state.actors.polylines && Array.isArray(state.actors.polylines)) {
+    state.actors.polylines.forEach(actor => actor.setVisibility(false));
+  }
+  if (state.actors.highlightedCells && Array.isArray(state.actors.highlightedCells)) {
+    state.actors.highlightedCells.forEach(actor => {
+      if (actor) actor.setVisibility(false);
+    });
+  }
+
+  // Show only the selected polyline
+  if (state.actors.polylines && state.actors.polylines[index]) {
+    state.actors.polylines[index].setVisibility(showPolylines.checked);
+  }
+
+  // Show highlighted cells for the selected polyline
+  if (state.actors.highlightedCells && state.actors.highlightedCells[index]) {
+    state.actors.highlightedCells[index].setVisibility(true);
+  }
+
+  // Update UI with polyline details
+  const polyline = state.polylines[index];
+  const lengthStr = polyline.euclideanLength < 1
+    ? polyline.euclideanLength.toFixed(4)
+    : polyline.euclideanLength.toFixed(2);
+  currentPolyline.textContent = `Polyline ${index + 1}/${state.polylines.length} • ${polyline.pointCount} pts • Len: ${lengthStr} • ${polyline.cellIds ? polyline.cellIds.length : 0} cells`;
+
+  // Log detailed information
+  console.log(`\n=== Polyline ${index + 1}/${state.polylines.length} ===`);
+  console.log(`Points: ${polyline.pointCount}, Length: ${polyline.euclideanLength}`);
+  console.log(`Point IDs: [${polyline.pointIds ? polyline.pointIds.join(', ') : 'N/A'}]`);
+
+  // Show point coordinates
+  if (polyline.positions && polyline.positions.length > 0) {
+    console.log(`Point Coordinates:`);
+    polyline.positions.forEach((pos, idx) => {
+      const pointId = polyline.pointIds ? polyline.pointIds[idx] : idx;
+      console.log(`  Point ${pointId}: (${pos[0].toFixed(6)}, ${pos[1].toFixed(6)}, ${pos[2].toFixed(6)})`);
+    });
+  }
+
+  console.log(`Cell IDs: [${polyline.cellIds ? polyline.cellIds.join(', ') : 'N/A'}]`);
+
+  // Update button states
+  updatePlaybackButtons();
+  renderWindow.render();
+}
+
+function togglePlayback() {
+  console.log('togglePlayback called, isPlaying:', state.playback.isPlaying);
+  console.log('Number of polylines:', state.polylines ? state.polylines.length : 'null');
+  console.log('Current index:', state.playback.currentIndex);
+
+  if (state.playback.isPlaying) {
+    console.log('Stopping playback');
+    stopPlayback();
+  } else {
+    console.log('Starting playback');
+    startPlayback();
+  }
+}
+
+function startPlayback() {
+  if (!state.polylines || state.polylines.length === 0) {
+    console.log('Cannot start playback: no polylines');
+    return;
+  }
+
+  console.log('Starting playback from index:', state.playback.currentIndex);
+  state.playback.isPlaying = true;
+  playBtn.textContent = '⏸';
+  playBtn.classList.add('playing');
+
+  state.playback.intervalId = setInterval(() => {
+    let nextIndex = state.playback.currentIndex + 1;
+    if (nextIndex >= state.polylines.length) {
+      nextIndex = 0; // Loop back to start
+    }
+    console.log('Advancing to polyline:', nextIndex);
+    showPolyline(nextIndex);
+  }, state.playback.speed);
+}
+
+function stopPlayback() {
+  state.playback.isPlaying = false;
+  playBtn.textContent = '▶';
+  playBtn.classList.remove('playing');
+
+  if (state.playback.intervalId) {
+    clearInterval(state.playback.intervalId);
+    state.playback.intervalId = null;
+  }
+}
+
+function updatePlaybackButtons() {
+  const hasPolylines = state.polylines && state.polylines.length > 0;
+  const currentIdx = state.playback.currentIndex;
+  const maxIdx = hasPolylines ? state.polylines.length - 1 : 0;
+
+  firstBtn.disabled = !hasPolylines || currentIdx === 0;
+  prevBtn.disabled = !hasPolylines || currentIdx === 0;
+  nextBtn.disabled = !hasPolylines || currentIdx === maxIdx;
+  lastBtn.disabled = !hasPolylines || currentIdx === maxIdx;
+}
+
+function enablePlaybackControls() {
+  playBtn.disabled = false;
+  updatePlaybackButtons();
+}
+
+function disablePlaybackControls() {
+  stopPlayback();
+  firstBtn.disabled = true;
+  prevBtn.disabled = true;
+  playBtn.disabled = true;
+  nextBtn.disabled = true;
+  lastBtn.disabled = true;
+  currentPolyline.textContent = 'No polyline selected';
+}
+
+function updateCellOpacity(opacity) {
+  // Update main mesh opacity
+  if (state.actors.mesh) {
+    state.actors.mesh.getProperty().setOpacity(opacity);
+  }
+
+  // Update highlighted cells opacity
+  if (state.actors.highlightedCells && Array.isArray(state.actors.highlightedCells)) {
+    state.actors.highlightedCells.forEach(actor => {
+      if (actor) {
+        actor.getProperty().setOpacity(opacity);
+      }
+    });
+  }
+
+  renderWindow.render();
 }
 
 function updateVisibility() {
@@ -509,9 +770,20 @@ function updateVisibility() {
     }
   }
   if (state.actors.polylines) {
-    state.actors.polylines.setVisibility(showPolylines.checked);
+    if (Array.isArray(state.actors.polylines)) {
+      // In playback mode, visibility is controlled by showPolyline()
+      // Only update if checkbox is toggled and we're not in single-view mode
+      if (state.playback.currentIndex === -1) {
+        state.actors.polylines.forEach(actor => actor.setVisibility(showPolylines.checked));
+      } else {
+        // Update current polyline visibility based on checkbox
+        showPolyline(state.playback.currentIndex);
+      }
+    } else {
+      state.actors.polylines.setVisibility(showPolylines.checked);
+    }
   }
-  if (state.actors.wireframe) {
+  if (state.actors.wireframe && showWireframe) {
     state.actors.wireframe.setVisibility(showWireframe.checked);
   }
   renderWindow.render();
@@ -538,9 +810,92 @@ function updateColors() {
   }
   if (state.actors.polylines) {
     const color = hexToRgb(polylineColor.value);
-    state.actors.polylines.getProperty().setColor(color[0], color[1], color[2]);
+    if (Array.isArray(state.actors.polylines)) {
+      state.actors.polylines.forEach(actor => {
+        actor.getProperty().setColor(color[0], color[1], color[2]);
+      });
+    } else {
+      state.actors.polylines.getProperty().setColor(color[0], color[1], color[2]);
+    }
   }
   renderWindow.render();
+}
+
+function removeDegenerateCells(polyData) {
+  const cells = polyData.getPolys();
+  const cellData = cells.getData();
+  const numCells = polyData.getNumberOfPolys();
+  const points = polyData.getPoints();
+  const pointData = points.getData();
+
+  const validCells = [];
+  let offset = 0;
+  let duplicateCount = 0;
+  let collinearCount = 0;
+
+  for (let cellId = 0; cellId < numCells; cellId++) {
+    const numPts = cellData[offset];
+    const pts = [];
+    for (let i = 0; i < numPts; i++) {
+      pts.push(cellData[offset + 1 + i]);
+    }
+
+    // Check if triangle has duplicate vertices
+    const hasDuplicates = pts[0] === pts[1] || pts[1] === pts[2] || pts[0] === pts[2];
+
+    // Check for collinear vertices (zero area)
+    let isCollinear = false;
+    if (!hasDuplicates && numPts === 3) {
+      // Get vertices
+      const v0 = [pointData[pts[0]*3], pointData[pts[0]*3+1], pointData[pts[0]*3+2]];
+      const v1 = [pointData[pts[1]*3], pointData[pts[1]*3+1], pointData[pts[1]*3+2]];
+      const v2 = [pointData[pts[2]*3], pointData[pts[2]*3+1], pointData[pts[2]*3+2]];
+
+      // Calculate cross product to determine area
+      const edge1 = [v1[0]-v0[0], v1[1]-v0[1], v1[2]-v0[2]];
+      const edge2 = [v2[0]-v0[0], v2[1]-v0[1], v2[2]-v0[2]];
+      const cross = [
+        edge1[1]*edge2[2] - edge1[2]*edge2[1],
+        edge1[2]*edge2[0] - edge1[0]*edge2[2],
+        edge1[0]*edge2[1] - edge1[1]*edge2[0]
+      ];
+      const crossMag = Math.sqrt(cross[0]*cross[0] + cross[1]*cross[1] + cross[2]*cross[2]);
+
+      // Check if area is essentially zero (collinear vertices)
+      // Use 1e-6 threshold to account for floating-point precision and nearly-degenerate triangles
+      if (crossMag < 1e-6) {
+        isCollinear = true;
+        collinearCount++;
+        console.log(`  Removing cell ${cellId} with collinear vertices [${pts.join(', ')}], crossMag = ${crossMag}, area = ${(crossMag/2).toFixed(10)}`);
+      }
+    }
+
+    if (!hasDuplicates && !isCollinear) {
+      // Valid triangle - keep it
+      validCells.push(numPts, ...pts);
+    } else if (hasDuplicates) {
+      duplicateCount++;
+    }
+
+    offset += numPts + 1;
+  }
+
+  if (duplicateCount > 0) {
+    console.warn(`Removed ${duplicateCount} degenerate triangles (duplicate vertices)`);
+  }
+  if (collinearCount > 0) {
+    console.warn(`Removed ${collinearCount} degenerate triangles (collinear vertices, zero area)`);
+  }
+
+  // Create new polydata with valid cells only
+  const newPolyData = vtkPolyData.newInstance();
+  const newCells = vtkCellArray.newInstance();
+
+  newCells.setData(Uint32Array.from(validCells));
+  newPolyData.setPoints(polyData.getPoints());
+  newPolyData.setPolys(newCells);
+
+  return newPolyData;
 }
 
 function hexToRgb(hex) {

@@ -147,14 +147,13 @@ export function detectSharpCornersWithMap(polyData, boundaryData, angleThreshold
   return corners;
 }
 
-export function traceBoundaryPolylinesOptimized(polyData, boundaryData, corners) {
+export function detechBoundaryPolylines(polyData, boundaryData, corners) {
   const { adjacencyMap } = boundaryData;
   const points = polyData.getPoints();
   const pointData = points.getData();
 
   const cornerIds = corners.map(c => c.pointId);
   const polyLineArray = [];
-
   const neighborCells = new Map();
 
   // Helper function to mark cell apex as visited
@@ -163,14 +162,24 @@ export function traceBoundaryPolylinesOptimized(polyData, boundaryData, corners)
       const apex_ = [0, 0, 0];
       apex_[apexId] = 1;
       neighborCells.set(cellId, apex_);
-    } else {
+    } 
+    
+    else if (neighborCells.get(cellId)[apexId] === 1)
+    {
+      return false;
+    }
+    else {
       neighborCells.get(cellId)[apexId] = 1;
     }
+    return true;
   };
 
   // tracing down along the polyline
   const tracePolyline = (polyLine, adjacencyMap) => {
 
+    if (polyLine.length < 2)
+      return;
+    
     // Last element
     const [neighborId,rotation, cellId, apexId] = polyLine[polyLine.length - 1];
     // Last point
@@ -182,11 +191,13 @@ export function traceBoundaryPolylinesOptimized(polyData, boundaryData, corners)
     // First element
     adjacencyMap.get(neighborId).forEach(([n, r, c, a]) => {
       // n is the same as the previous element
-      const prevId = polyLine.length < 2 ? n : polyLine[polyLine.length - 2][0];
+      const prevId = polyLine[polyLine.length - 2][0];
       if (n === prevId || (neighborCells.has(c) && neighborCells.get(c)[a] === 1))
         return;
 
-      markCellApex(c, a);
+      if (!markCellApex(c, a)) // visited already
+        return;
+
       polyLine.push([n, r, c, a]);
       tracePolyline(polyLine, adjacencyMap);
     })
@@ -203,7 +214,8 @@ export function traceBoundaryPolylinesOptimized(polyData, boundaryData, corners)
       }
 
       // Mark cell/apex as visited
-      markCellApex(cellId, apexId);
+      if (!markCellApex(cellId, apexId))
+        return;
 
       // Initialize polyline starting from corner
       const polyLine = [[cornerId, rotation, cellId, apexId]];
@@ -212,10 +224,26 @@ export function traceBoundaryPolylinesOptimized(polyData, boundaryData, corners)
       // Trace the polyline
       tracePolyline(polyLine, adjacencyMap);
 
-      // Save the completed polyline
       polyLineArray.push(polyLine);
     })
   })
+
+  // Pre-build cell lookup table for efficiency
+  const cells = polyData.getPolys();
+  const cellData = cells.getData();
+  const numCells = polyData.getNumberOfPolys();
+  const cellLookup = new Map();
+
+  let offset = 0;
+  for (let cellId = 0; cellId < numCells; cellId++) {
+    const numPts = cellData[offset];
+    const pts = [];
+    for (let i = 0; i < numPts; i++) {
+      pts.push(cellData[offset + 1 + i]);
+    }
+    cellLookup.set(cellId, pts);
+    offset += numPts + 1;
+  }
 
   // Convert polyLineArray to the format expected by index.js
   // Each polyline needs: { positions: [[x,y,z], ...], euclideanLength: number }
@@ -223,6 +251,27 @@ export function traceBoundaryPolylinesOptimized(polyData, boundaryData, corners)
     const positions = polyLine.map(([pointId]) => {
       const idx = pointId * 3;
       return [pointData[idx], pointData[idx + 1], pointData[idx + 2]];
+    });
+
+    // Extract point IDs
+    const pointIds = polyLine.map(([pointId]) => pointId);
+
+    // Extract cell IDs and build cell details
+    const cellIds = [];
+    const cellIdSet = new Set();
+    const cellDetails = [];
+
+    polyLine.forEach(([pointId, rotation, cellId, apexId]) => {
+      if (cellId !== undefined && !cellIdSet.has(cellId)) {
+        cellIds.push(cellId);
+        cellIdSet.add(cellId);
+
+        // Get the point IDs from the lookup table
+        const pts = cellLookup.get(cellId);
+        if (pts) {
+          cellDetails.push({ cellId, pointIds: pts });
+        }
+      }
     });
 
     // Calculate euclidean length
@@ -236,6 +285,9 @@ export function traceBoundaryPolylinesOptimized(polyData, boundaryData, corners)
 
     return {
       positions,
+      pointIds,
+      cellIds,
+      cellDetails,
       euclideanLength,
       pointCount: positions.length
     };

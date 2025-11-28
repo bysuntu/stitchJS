@@ -296,6 +296,12 @@ export function detechBoundaryPolylines(polyData, boundaryData, corners) {
   return polylines;
 }
 
+export function stichEdge(polyData, edge) {
+  const cells = polyData.getPolys();
+  const cellData = cells.getData();
+  const numCells = polyData.getNumberOfPolys();
+}
+
 export function analyzePolylines(polylines) {
   // Sort by length for easier analysis
   return polylines.slice().sort((a, b) => b.euclideanLength - a.euclideanLength);

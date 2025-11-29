@@ -3,6 +3,9 @@
 import { a, p } from "@kitware/vtk.js/macros2";
 import { GEOMETRY_TOLERANCES } from './renderConfig';
 import { element } from "three/tsl";
+import vtkCellArray from '@kitware/vtk.js/Common/Core/CellArray';
+import vtk from "@kitware/vtk.js/vtk";
+import { tri } from "three/src/nodes/TSL.js";
 
 export function detectBoundaryEdgesSTLWithAdjacency(polyData) {
   const cells = polyData.getPolys();
@@ -349,7 +352,7 @@ const point2SegmentDistance = (point, segment, tolerance = 1e-8) => {
   return { distance, t };
 }
 
-const distanceBetweenTwoPolyLines = (polyLine1, polyLine2, cellMap, tolerance) => {
+const coupleTwoPolyLines = (polyData, polyLine1, polyLine2, cellMap, tolerance) => {
 
   const internals1 = polyLine1.slice(1, -1);
   if (internals1.length === 0)
@@ -359,10 +362,10 @@ const distanceBetweenTwoPolyLines = (polyLine1, polyLine2, cellMap, tolerance) =
   const points = polyData.getPoints();
 
   const extractPoints = (polyLine) => {
-    polyLine.slice(1).map((element) => {
-      const [cellId, sideId] = element.slice(3);
-      const pointIds = cells.getCellPoints(cellId);
-      pointIds.push(pointIds[0]).slice(sideId, sideId + 2);
+    return polyLine.slice(1).map((element) => {
+      const [, , cellId, sideId] = element;
+      const triIds = cells.getCellPoints(cellId);
+      const pointIds = [...triIds, triIds[0]].slice(sideId, sideId + 2);
       const pointCords = pointIds.map(pointId => {
         const idx = pointId * 3;
         return [points.getData()[idx], points.getData()[idx + 1], points.getData()[idx + 2]];
@@ -409,40 +412,55 @@ function calTriArea(p0, p1, p2) {
   return 0.5 * magnitude;
 }
 
-function refineTriangle(orderedPoints) {
-  const traingles = [];
+function refineTriangle(orderedPoints, polyData) {
+  const triangles = [];
   const points = polyData.getPoints();
   // There are i points on Side 0 including the corners
   // There are j points on Side 1 including the corners,
   // There are k points on Side 2 including the corners.
   // For the triangles using the first i - 1 points and the second last point on side 2 (
   // i.e. the last point excluding the corner).
-  const inner_ = []
+  const inner = [];
   for (let sideId = 0; sideId < 3; sideId++) {
-    const apex = orderedPoints[sideId][orderedPoints[(sideId + 2) % 3].length - 2];
-    inner_.push(apex);
+    const oppositeSide = orderedPoints[(sideId + 2) % 3];
+
+    // Safeguard: skip if opposite side doesn't have enough points for an apex
+    if (oppositeSide.length < 2) {
+      console.warn(`Side ${(sideId + 2) % 3} has insufficient points for apex selection`);
+      continue;
+    }
+
+    const apex = oppositeSide[oppositeSide.length - 2];
+    inner.push(apex);
     const apexCoord = points.getData().slice(apex * 3, apex * 3 + 3);
+
     for (let segId = 0; segId < orderedPoints[sideId].length - 2; segId++) {
       const p0 = orderedPoints[sideId][segId];
       const p1 = orderedPoints[sideId][segId + 1];
-      const area_ = calTriArea(points.getData().slice(p0 * 3, p0 * 3 + 3), 
-      points.getData().slice(p1 * 3, p1 * 3 + 3), 
+      const area = calTriArea(points.getData().slice(p0 * 3, p0 * 3 + 3),
+      points.getData().slice(p1 * 3, p1 * 3 + 3),
       apexCoord);
-      if (area_ > GEOMETRY_TOLERANCES.MIN_TRIANGLE_AREA) {
-        traingles.push([p0, p1, apex]);
+      if (area > GEOMETRY_TOLERANCES.MIN_TRIANGLE_AREA) {
+        triangles.push([p0, p1, apex]);
       }
     }
   }
-  // The final triangle is formed by the inner triangle
-  traingles.push(inner_);
-  return traingles;
+
+  // Safeguard: only add inner triangle if we have 3 valid apexes
+  if (inner.length === 3) {
+    triangles.push(inner);
+  } else {
+    console.warn(`Incomplete inner triangle: only ${inner.length} apexes found`);
+  }
+
+  return triangles;
 }
 
-function reTriagnulateCells(polyData, stitchMap) {
+function reTriangulateCells(polyData, stitchMap) {
   const cells = polyData.getPolys();
-  
+
   const cells_to_remove = new Set();
-  const cells_to_add = vtk.cellArray();
+  const cells_to_add = vtkCellArray.newInstance();
   stitchMap.forEach((info, cellId) => {
     cells_to_remove.add(cellId);
     const orderedPoints = [[], [], []];
@@ -452,20 +470,34 @@ function reTriagnulateCells(polyData, stitchMap) {
       orderedPoints[sideId].push(start_point);
       orderedPoints[sideId].push(...follow_point);
     })
-    const newTriangles = refineTriangle(orderedPoints);
+    const newTriangles = refineTriangle(orderedPoints, polyData);
     newTriangles.forEach(triangle => {
-      tri_ = vtk.vtkTriangle();
-      tri_.setPoints(triangle);
-      cells_to_add.insertNextCell(tri_);
+      // Add triangle to cell array (format: [numPoints, pointId1, pointId2, pointId3])
+      cells_to_add.insertNextCell([3, triangle[0], triangle[1], triangle[2]]);
     })
   })
 
-  // Update cellArray
-  polyData.getPolys().removeCells(cells_to_remove);
-  polyData.getPolys().insertNextCell(cells_to_add);
+  // Rebuild cell array: copy unchanged cells + add new triangles
+  const numCells = polyData.getNumberOfPolys();
+  const newCellData = [];
 
-  // Update the polydata using the latest cellArray
+  // Copy unchanged cells
+  for (let cellId = 0; cellId < numCells; cellId++) {
+    if (!cells_to_remove.has(cellId)) {
+      const pointIds = cells.getCellPoints(cellId);
+      newCellData.push(pointIds.length, ...pointIds);
+    }
+  }
 
+  // Append new triangles from cells_to_add
+  const addedData = cells_to_add.getData();
+  newCellData.push(...addedData);
+
+  // Create final cell array and update polyData
+  const finalCells = vtkCellArray.newInstance();
+  finalCells.setData(Uint32Array.from(newCellData));
+  polyData.setPolys(finalCells);
+  polyData.modified();
 }
 
 export function stitchEdge(polyData, polyLineArray) {
@@ -500,18 +532,18 @@ export function stitchEdge(polyData, polyLineArray) {
   const stitchMap = new Map();
   polyLineMap.forEach((indexArray, key) => {
     console.log('key: ', key);
-    indexArray.forEach((polyLineIdx, idx) => {
-      const currentPolyLine = polyLineArray[polyLineIdx];
-      indexArray.shift();
-      indexArray.forEach(otherIndex => {
-        const otherPolyLine = polyLineArray[otherIndex];
-        distanceBetweenTwoPolyLines(currentPolyLine, otherPolyLine, stitchMap, GEOMETRY_TOLERANCES.POLYLINE_DISTANCE_TOLERANCE);
-      });
-    });
+    // Compare each pair of polylines exactly once
+    for (let i = 0; i < indexArray.length; i++) {
+      const currentPolyLine = polyLineArray[indexArray[i]];
+      for (let j = i + 1; j < indexArray.length; j++) {
+        const otherPolyLine = polyLineArray[indexArray[j]];
+        coupleTwoPolyLines(polyData, currentPolyLine, otherPolyLine, stitchMap, GEOMETRY_TOLERANCES.POLYLINE_DISTANCE_TOLERANCE);
+      }
+    }
   });
 
   // Topology change to remove the cell will be split. Triangulate the those cells with split points to make them conformal.
-  reTriagnulateCells(polyData, stitchMap);
+  reTriangulateCells(polyData, stitchMap);
 }
 
 export function analyzePolylines(polylines) {

@@ -1,5 +1,7 @@
 import { useRef, useEffect } from 'react';
 import { GEOMETRY_TOLERANCES } from '../renderConfig';
+import { stitchEdge } from '../ops';
+import { threeToPolyData } from '../geometryAdapter';
 
 function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry, processedData, playback, onPlaybackChange }) {
   const fileInputRef = useRef(null);
@@ -26,6 +28,19 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
       // Start playing
       onPlaybackChange({ isPlaying: true });
     }
+  };
+
+  const handleStitchSlit = () => {
+    const data = processedDataRef.current;
+    if (!data?.polyLineArray || !data?.geometry) {
+      console.warn('No polyline data or geometry available for stitching');
+      return;
+    }
+
+    console.log('Stitching slit...');
+    // Convert Three.js geometry to VTK polyData format for stitching
+    const polyData = threeToPolyData(data.geometry);
+    stitchEdge(polyData, data.polyLineArray);
   };
 
   const showPolyline = (index) => {
@@ -173,19 +188,9 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
           />
         </div>
         <button
+          className="process-btn"
           onClick={onProcess}
           disabled={!geometry}
-          style={{
-            width: '100%',
-            padding: '10px',
-            background: geometry ? '#404040' : '#2a2a2a',
-            border: '1px solid #555',
-            borderRadius: '4px',
-            color: geometry ? '#e0e0e0' : '#666',
-            cursor: geometry ? 'pointer' : 'not-allowed',
-            fontSize: '13px',
-            transition: 'background 0.2s'
-          }}
         >
           Process STL
         </button>
@@ -350,6 +355,13 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
               onChange={(e) => onSettingsChange({ meshOpacity: parseFloat(e.target.value) / 100 })}
             />
           </div>
+          <button
+            className="stitch-btn"
+            onClick={handleStitchSlit}
+            disabled={!processedData.polyLineArray}
+          >
+            STITCH SLIT
+          </button>
         </div>
       )}
     </div>

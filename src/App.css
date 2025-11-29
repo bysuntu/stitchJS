@@ -184,3 +184,49 @@ h1 {
   color: #00ffff;
   font-weight: 500;
 }
+
+.stitch-btn {
+  width: 100%;
+  padding: 10px;
+  margin-top: 10px;
+  background: #007acc;
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.stitch-btn:hover:not(:disabled) {
+  background: #0098ff;
+}
+
+.stitch-btn:disabled {
+  background: #2a2a2a;
+  color: #666;
+  cursor: not-allowed;
+}
+
+.process-btn {
+  width: 100%;
+  padding: 10px;
+  background: #404040;
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: #e0e0e0;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.2s;
+}
+
+.process-btn:hover:not(:disabled) {
+  background: #4a4a4a;
+}
+
+.process-btn:disabled {
+  background: #2a2a2a;
+  color: #666;
+  cursor: not-allowed;
+}

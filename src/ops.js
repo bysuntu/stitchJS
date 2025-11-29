@@ -1,6 +1,8 @@
 // Core operations for boundary detection and polyline tracing
 
-import { a } from "@kitware/vtk.js/macros2";
+import { a, p } from "@kitware/vtk.js/macros2";
+import { GEOMETRY_TOLERANCES } from './renderConfig';
+import { element } from "three/tsl";
 
 export function detectBoundaryEdgesSTLWithAdjacency(polyData) {
   const cells = polyData.getPolys();
@@ -53,15 +55,15 @@ export function detectBoundaryEdgesSTLWithAdjacency(polyData) {
   const boundaryEdges = [];
   const adjacencyMap = new Map();
   for (const h in edgeCount) {
-      const [p0, p1, rotation, cellId, apex] = edgePoints[h];
+      const [p0, p1, rotation, cellId, side] = edgePoints[h];
       boundaryEdges.push([p0, p1]);
 
       // Build adjacency map
       if (!adjacencyMap.has(p0)) adjacencyMap.set(p0, new Set());
       if (!adjacencyMap.has(p1)) adjacencyMap.set(p1, new Set());
 
-      adjacencyMap.get(p0).add([p1, rotation, cellId, apex]);
-      adjacencyMap.get(p1).add([p0, -rotation, cellId, apex]);
+      adjacencyMap.get(p0).add([p1, rotation, cellId, side]);
+      adjacencyMap.get(p1).add([p0, -rotation, cellId, side]);
   }
 
   return { boundaryEdges, adjacencyMap };
@@ -86,8 +88,8 @@ export function detectSharpCornersWithMap(polyData, boundaryData, angleThreshold
     if (neighbors.size == 2) {
       const [pack1, pack2] = Array.from(neighbors);
 
-      const [n1, rotation1, cellId1, apex1] = pack1;
-      const [n2, rotation2, cellId2, apex2] = pack2;
+      const [n1, rotation1, cellId1, side1] = pack1;
+      const [n2, rotation2, cellId2, side2] = pack2;
 
       const p1x = pointData[n1 * 3];
       const p1y = pointData[n1 * 3 + 1];
@@ -156,20 +158,20 @@ export function detechBoundaryPolylines(polyData, boundaryData, corners) {
   const polyLineArray = [];
   const neighborCells = new Map();
 
-  // Helper function to mark cell apex as visited
-  const markCellApex = (cellId, apexId) => {
+  // Helper function to mark cell side as visited
+  const markCellSide = (cellId, sideId) => {
     if (!neighborCells.has(cellId)) {
-      const apex_ = [0, 0, 0];
-      apex_[apexId] = 1;
-      neighborCells.set(cellId, apex_);
+      const side_ = [0, 0, 0];
+      side_[sideId] = 1;
+      neighborCells.set(cellId, side_);
     } 
     
-    else if (neighborCells.get(cellId)[apexId] === 1)
+    else if (neighborCells.get(cellId)[sideId] === 1)
     {
       return false;
     }
     else {
-      neighborCells.get(cellId)[apexId] = 1;
+      neighborCells.get(cellId)[sideId] = 1;
     }
     return true;
   };
@@ -181,7 +183,7 @@ export function detechBoundaryPolylines(polyData, boundaryData, corners) {
       return;
     
     // Last element
-    const [neighborId,rotation, cellId, apexId] = polyLine[polyLine.length - 1];
+    const [neighborId,rotation, cellId, sideId] = polyLine[polyLine.length - 1];
     // Last point
     if (cornerIds.includes(neighborId) || adjacencyMap.get(neighborId).size !== 2)
     {
@@ -195,7 +197,7 @@ export function detechBoundaryPolylines(polyData, boundaryData, corners) {
       if (n === prevId || (neighborCells.has(c) && neighborCells.get(c)[a] === 1))
         return;
 
-      if (!markCellApex(c, a)) // visited already
+      if (!markCellSide(c, a)) // visited already
         return;
 
       polyLine.push([n, r, c, a]);
@@ -207,19 +209,19 @@ export function detechBoundaryPolylines(polyData, boundaryData, corners) {
     const cornerId = corner.pointId;
     const neighbors = adjacencyMap.get(cornerId);
     // Multiple neighbors and loop over them
-    Array.from(neighbors).forEach(([neighborId, rotation, cellId, apexId]) => {
-      // Skip if already visited from this apex
-      if (neighborCells.has(cellId) && neighborCells.get(cellId)[apexId] === 1) {
+    Array.from(neighbors).forEach(([neighborId, rotation, cellId, sideId]) => {
+      // Skip if already visited from this side
+      if (neighborCells.has(cellId) && neighborCells.get(cellId)[sideId] === 1) {
         return;
       }
 
-      // Mark cell/apex as visited
-      if (!markCellApex(cellId, apexId))
+      // Mark cell/side as visited
+      if (!markCellSide(cellId, sideId))
         return;
 
       // Initialize polyline starting from corner
-      const polyLine = [[cornerId, rotation, cellId, apexId]];
-      polyLine.push([neighborId, rotation, cellId, apexId]);
+      const polyLine = [[cornerId, rotation, cellId, sideId]];
+      polyLine.push([neighborId, rotation, cellId, sideId]);
 
       // Trace the polyline
       tracePolyline(polyLine, adjacencyMap);
@@ -261,7 +263,7 @@ export function detechBoundaryPolylines(polyData, boundaryData, corners) {
     const cellIdSet = new Set();
     const cellDetails = [];
 
-    polyLine.forEach(([pointId, rotation, cellId, apexId]) => {
+    polyLine.forEach(([pointId, rotation, cellId, sideId]) => {
       if (cellId !== undefined && !cellIdSet.has(cellId)) {
         cellIds.push(cellId);
         cellIdSet.add(cellId);
@@ -296,10 +298,220 @@ export function detechBoundaryPolylines(polyData, boundaryData, corners) {
   return { polylines, polyLineArray };
 }
 
+const point2SegmentDistance = (point, segment, tolerance = 1e-8) => {
+  const [p0, p1] = segment;
+
+  const distToP0 = Math.sqrt(Math.pow(point[0] - p0[0], 2) + Math.pow(point[1] - p0[1], 2) + Math.pow(point[2] - p0[2], 2));
+  if (distToP0 <= tolerance) {
+    return { distance: 0, t: 0 };
+  }
+
+  const distToP1 = Math.sqrt(Math.pow(point[0] - p1[0], 2) + Math.pow(point[1] - p1[1], 2) + Math.pow(point[2] - p1[2], 2));
+  if (distToP1 <= tolerance) {
+    return { distance: 0, t: 1 };
+  }
+
+  // Project point onto segment and return 0 to 1.
+  // O means point is at p0
+  // 1 means point is at p1
+  // 0.5 means point is at the middle of the segment
+  const v = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]]; // Segment vector
+  const w = [point[0] - p0[0], point[1] - p0[1], point[2] - p0[2]]; // Vector from p0 to point
+
+  const dot_w_v = w[0] * v[0] + w[1] * v[1] + w[2] * v[2];
+  const dot_v_v = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+
+  // The segment is a point.
+  if (dot_v_v < tolerance) {
+    const dist = Math.sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
+    return { distance: dist, t: 0 };
+  }
+
+  // t is the projection parameter.
+  const t = dot_w_v / dot_v_v;
+
+  let closestPoint;
+  if (t < 0) {
+    closestPoint = p0;
+  } else if (t > 1) {
+    closestPoint = p1;
+  } else {
+    closestPoint = [p0[0] + t * v[0], p0[1] + t * v[1], p0[2] + t * v[2]];
+  }
+
+  const dx = point[0] - closestPoint[0];
+  const dy = point[1] - closestPoint[1];
+  const dz = point[2] - closestPoint[2];
+
+  const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+  // Return distance and the unclamped projection parameter t
+  return { distance, t };
+}
+
+const distanceBetweenTwoPolyLines = (polyLine1, polyLine2, cellMap, tolerance) => {
+
+  const internals1 = polyLine1.slice(1, -1);
+  if (internals1.length === 0)
+    return;
+
+  const cells = polyData.getPolys();
+  const points = polyData.getPoints();
+
+  const extractPoints = (polyLine) => {
+    polyLine.slice(1).map((element) => {
+      const [cellId, sideId] = element.slice(3);
+      const pointIds = cells.getCellPoints(cellId);
+      pointIds.push(pointIds[0]).slice(sideId, sideId + 2);
+      const pointCords = pointIds.map(pointId => {
+        const idx = pointId * 3;
+        return [points.getData()[idx], points.getData()[idx + 1], points.getData()[idx + 2]];
+      });
+      return [cellId, sideId, pointIds, pointCords];
+    })
+  }
+  // const segments1 = extractPoints(polyLine1);
+  const segments2 = extractPoints(polyLine2);
+  internals1.forEach(element => {
+    const [pointId] = element[0];
+    const point = points.getData().slice(pointId * 3, pointId * 3 + 3);
+    segments2.forEach(segment => {
+      const [cellId, sideId, pointIds, pointCords] = segment;
+      const { distance, t } = point2SegmentDistance(point, pointCords, PROXIMITY_TOLERANCE);
+      if (distance <= tolerance && t >= 0 && t <= 1) {
+        // pointMap.set(pointId, [cellId, sideId, t]);
+        if (!cellMap.has(cellId))
+        {
+          cellMap.set(cellId, [new Set(), new Set(), new Set()]);
+          cellMap.get(cellId)[sideId].add([t, pointId]);
+        }
+        else {
+          cellMap.get(cellId)[sideId].add([t, pointId]);
+        }
+      }
+    })
+  })
+}
+
+function calTriArea(p0, p1, p2) {
+  const v1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+  const v2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+
+  // Calculate the cross product of the two edge vectors
+  const crossProduct = [
+    v1[1] * v2[2] - v1[2] * v2[1],
+    v1[2] * v2[0] - v1[0] * v2[2],
+    v1[0] * v2[1] - v1[1] * v2[0]
+  ];
+
+  // The area of the triangle is half the magnitude of the cross product vector
+  const magnitude = Math.sqrt(crossProduct[0]**2 + crossProduct[1]**2 + crossProduct[2]**2);
+  return 0.5 * magnitude;
+}
+
+function refineTriangle(orderedPoints) {
+  const traingles = [];
+  const points = polyData.getPoints();
+  // There are i points on Side 0 including the corners
+  // There are j points on Side 1 including the corners,
+  // There are k points on Side 2 including the corners.
+  // For the triangles using the first i - 1 points and the second last point on side 2 (
+  // i.e. the last point excluding the corner).
+  const inner_ = []
+  for (let sideId = 0; sideId < 3; sideId++) {
+    const apex = orderedPoints[sideId][orderedPoints[(sideId + 2) % 3].length - 2];
+    inner_.push(apex);
+    const apexCoord = points.getData().slice(apex * 3, apex * 3 + 3);
+    for (let segId = 0; segId < orderedPoints[sideId].length - 2; segId++) {
+      const p0 = orderedPoints[sideId][segId];
+      const p1 = orderedPoints[sideId][segId + 1];
+      const area_ = calTriArea(points.getData().slice(p0 * 3, p0 * 3 + 3), 
+      points.getData().slice(p1 * 3, p1 * 3 + 3), 
+      apexCoord);
+      if (area_ > GEOMETRY_TOLERANCES.MIN_TRIANGLE_AREA) {
+        traingles.push([p0, p1, apex]);
+      }
+    }
+  }
+  // The final triangle is formed by the inner triangle
+  traingles.push(inner_);
+  return traingles;
+}
+
+function reTriagnulateCells(polyData, stitchMap) {
+  const cells = polyData.getPolys();
+  
+  const cells_to_remove = new Set();
+  const cells_to_add = vtk.cellArray();
+  stitchMap.forEach((info, cellId) => {
+    cells_to_remove.add(cellId);
+    const orderedPoints = [[], [], []];
+    info.forEach((sidePoints, sideId) => {
+      const start_point = cells.getCellPoints(cellId)[sideId];
+      const follow_point = Array.from(sidePoints).sort((a, b) => a[0] - b[0]).map(p => p[1]);
+      orderedPoints[sideId].push(start_point);
+      orderedPoints[sideId].push(...follow_point);
+    })
+    const newTriangles = refineTriangle(orderedPoints);
+    newTriangles.forEach(triangle => {
+      tri_ = vtk.vtkTriangle();
+      tri_.setPoints(triangle);
+      cells_to_add.insertNextCell(tri_);
+    })
+  })
+
+  // Update cellArray
+  polyData.getPolys().removeCells(cells_to_remove);
+  polyData.getPolys().insertNextCell(cells_to_add);
+
+  // Update the polydata using the latest cellArray
+
+}
+
 export function stitchEdge(polyData, polyLineArray) {
   const cells = polyData.getPolys();
   const cellData = cells.getData();
   const numCells = polyData.getNumberOfPolys();
+
+
+  // Populate polyLineMap
+  const polyLineMap = new Map();
+  polyLineArray.forEach((polyLine, idx) => {
+    const first_element = polyLine[0];
+    const last_element = polyLine[polyLine.length - 1];
+    const first_id = Math.min(first_element[0], last_element[0]);
+    const last_id = Math.max(first_element[0], last_element[0]);
+    const key = `${first_id}-${last_id}`;
+    if (!polyLineMap.has(key)) {
+      polyLineMap.set(key, [idx]);
+    }
+    else {
+      polyLineMap.get(key).push(idx);
+    }
+  });
+
+  // Find the opposite edge
+  // The basic idea: slit means there are two boundary polylines are very close to each other.
+  // But the points are not conformal.To project the points on one polyline to the other one.
+  // The projected points are used to split the targeting facet (triangle) unless it is close to corner of a triangle.
+  // In the case, it could be merged later. However, this possiblity is very low, because point merging has been conducted during the conversion.
+  // stitchMap is used to record the cell that will be split and its side (decided by the sideId). The split is based on "t", and
+  // the corresponding pointId is also recorded.
+  const stitchMap = new Map();
+  polyLineMap.forEach((indexArray, key) => {
+    console.log('key: ', key);
+    indexArray.forEach((polyLineIdx, idx) => {
+      const currentPolyLine = polyLineArray[polyLineIdx];
+      indexArray.shift();
+      indexArray.forEach(otherIndex => {
+        const otherPolyLine = polyLineArray[otherIndex];
+        distanceBetweenTwoPolyLines(currentPolyLine, otherPolyLine, stitchMap, GEOMETRY_TOLERANCES.POLYLINE_DISTANCE_TOLERANCE);
+      });
+    });
+  });
+
+  // Topology change to remove the cell will be split. Triangulate the those cells with split points to make them conformal.
+  reTriagnulateCells(polyData, stitchMap);
 }
 
 export function analyzePolylines(polylines) {

@@ -68,6 +68,9 @@ export const GEOMETRY_TOLERANCES = {
   // Collinearity threshold (cosine of angle between edges)
   // If dot product of normalized edges is close to ±1, points are collinear
   COLLINEARITY_THRESHOLD: 0.9999,
+
+  // Distance tolerance for determining if two polylines are close
+  POLYLINE_DISTANCE_TOLERANCE: 0.0001,
 };
 
 // Default colors for visualization elements

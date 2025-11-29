@@ -1,11 +1,9 @@
 // Core operations for boundary detection and polyline tracing
 
-import { a, p } from "@kitware/vtk.js/macros2";
 import { GEOMETRY_TOLERANCES } from './renderConfig';
-import { element } from "three/tsl";
 import vtkCellArray from '@kitware/vtk.js/Common/Core/CellArray';
 import vtk from "@kitware/vtk.js/vtk";
-import { tri } from "three/src/nodes/TSL.js";
+
 
 export function detectBoundaryEdgesSTLWithAdjacency(polyData) {
   const cells = polyData.getPolys();

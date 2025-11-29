@@ -293,10 +293,10 @@ export function detechBoundaryPolylines(polyData, boundaryData, corners) {
     };
   });
 
-  return polylines;
+  return { polylines, polyLineArray };
 }
 
-export function stichEdge(polyData, edge) {
+export function stitchEdge(polyData, polyLineArray) {
   const cells = polyData.getPolys();
   const cellData = cells.getData();
   const numCells = polyData.getNumberOfPolys();

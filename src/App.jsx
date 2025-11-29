@@ -1,8 +1,9 @@
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import STLViewer from './components/STLViewer';
 import Sidebar from './components/Sidebar';
+import { DEFAULT_COLORS } from './renderConfig';
 import './App.css';
 
 function App() {
@@ -13,11 +14,11 @@ function App() {
   const [settings, setSettings] = useState({
     angleThreshold: 30,
     proximityTolerance: 1e-5,
-    meshColor: '#808080',
-    boundaryColor: '#ff0000',
-    cornerColor: '#00ff00',
-    polylineColor: '#00ffff',
-    wireframeColor: '#ffffff',
+    meshColor: DEFAULT_COLORS.MESH,
+    boundaryColor: DEFAULT_COLORS.BOUNDARY,
+    cornerColor: DEFAULT_COLORS.CORNER,
+    polylineColor: DEFAULT_COLORS.POLYLINE,
+    wireframeColor: DEFAULT_COLORS.WIREFRAME,
     showMesh: true,
     showWireframe: true,
     showBoundary: true,

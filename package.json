@@ -2,7 +2,7 @@
   "name": "stl-stitch",
   "version": "1.0.0",
   "description": "STL Boundary Detection and Polyline Viewer",
-  "main": "app.js",
+  "main": "src/main.jsx",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

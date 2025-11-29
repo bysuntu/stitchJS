@@ -1,9 +1,8 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import * as THREE from 'three';
 import vtkPolyData from '@kitware/vtk.js/Common/DataModel/PolyData';
-import vtkPoints from '@kitware/vtk.js/Common/Core/Points';
 import vtkCellArray from '@kitware/vtk.js/Common/Core/CellArray';
 import { removeDuplicatePoints } from '../mergePoints';
 import { threeToPolyData } from '../geometryAdapter';
@@ -188,7 +187,7 @@ function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProce
     console.log(`Found ${corners.length} corners`);
 
     // Trace polylines
-    const polylines = detechBoundaryPolylines(polyData, boundaryData, corners);
+    const { polylines, polyLineArray } = detechBoundaryPolylines(polyData, boundaryData, corners);
     console.log(`Created ${polylines.length} polylines`);
 
     // Analyze and sort
@@ -199,6 +198,7 @@ function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProce
       boundaryData,
       corners,
       polylines: sortedPolylines,
+      polyLineArray,
       numVertices: geometry.attributes.position.count,
       numTriangles: geometry.index.count / 3,
     };

@@ -69,3 +69,12 @@ export const GEOMETRY_TOLERANCES = {
   // If dot product of normalized edges is close to ±1, points are collinear
   COLLINEARITY_THRESHOLD: 0.9999,
 };
+
+// Default colors for visualization elements
+export const DEFAULT_COLORS = {
+  MESH: '#808080',        // Gray
+  BOUNDARY: '#ff0000',    // Red
+  CORNER: '#00ff00',      // Green
+  POLYLINE: '#ffff00',    // Yellow
+  WIREFRAME: '#ffffff',   // White
+};

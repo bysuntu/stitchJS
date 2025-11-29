@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import { useRef, useEffect } from 'react';
 import { GEOMETRY_TOLERANCES } from '../renderConfig';
 
 function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry, processedData, playback, onPlaybackChange }) {
@@ -258,22 +258,6 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
             type="color"
             value={settings.boundaryColor}
             onChange={(e) => onSettingsChange({ boundaryColor: e.target.value })}
-          />
-        </div>
-        <div className="control-group">
-          <label>Corner Color</label>
-          <input
-            type="color"
-            value={settings.cornerColor}
-            onChange={(e) => onSettingsChange({ cornerColor: e.target.value })}
-          />
-        </div>
-        <div className="control-group">
-          <label>Polyline Color</label>
-          <input
-            type="color"
-            value={settings.polylineColor}
-            onChange={(e) => onSettingsChange({ polylineColor: e.target.value })}
           />
         </div>
       </div>

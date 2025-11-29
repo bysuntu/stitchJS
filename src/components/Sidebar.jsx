@@ -1,4 +1,5 @@
 import React, { useRef, useEffect } from 'react';
+import { GEOMETRY_TOLERANCES } from '../renderConfig';
 
 function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry, processedData, playback, onPlaybackChange }) {
   const fileInputRef = useRef(null);
@@ -38,6 +39,68 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
     console.log(`\n=== Polyline ${clampedIndex + 1}/${data.polylines.length} ===`);
     console.log(`Points: ${polyline.pointCount}, Length: ${polyline.euclideanLength}`);
     console.log(`Point IDs: [${polyline.pointIds.join(', ')}]`);
+
+    // Calculate and log area of each neighboring facet
+    if (polyline.cellDetails && data.geometry) {
+      const positions = data.geometry.attributes.position.array;
+      console.log(`\nNeighboring Facets (${polyline.cellDetails.length} cells):`);
+
+      polyline.cellDetails.forEach((cell, idx) => {
+        const [i0, i1, i2] = cell.pointIds;
+
+        // Get vertex positions
+        const v0 = [positions[i0 * 3], positions[i0 * 3 + 1], positions[i0 * 3 + 2]];
+        const v1 = [positions[i1 * 3], positions[i1 * 3 + 1], positions[i1 * 3 + 2]];
+        const v2 = [positions[i2 * 3], positions[i2 * 3 + 1], positions[i2 * 3 + 2]];
+
+        // Calculate triangle area using cross product
+        // Area = 0.5 * |AB × AC|
+        const AB = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+        const AC = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+
+        const cross = [
+          AB[1] * AC[2] - AB[2] * AC[1],
+          AB[2] * AC[0] - AB[0] * AC[2],
+          AB[0] * AC[1] - AB[1] * AC[0]
+        ];
+
+        const crossMagnitude = Math.sqrt(cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]);
+        const area = 0.5 * crossMagnitude;
+
+        // Calculate edge lengths for diagnostics
+        const edgeAB = Math.sqrt(AB[0] * AB[0] + AB[1] * AB[1] + AB[2] * AB[2]);
+        const edgeAC = Math.sqrt(AC[0] * AC[0] + AC[1] * AC[1] + AC[2] * AC[2]);
+        const BC = [v2[0] - v1[0], v2[1] - v1[1], v2[2] - v1[2]];
+        const edgeBC = Math.sqrt(BC[0] * BC[0] + BC[1] * BC[1] + BC[2] * BC[2]);
+
+        console.log(`  Cell ${idx + 1} (ID: ${cell.cellId}): Area = ${area.toExponential(6)}, Points = [${i0}, ${i1}, ${i2}]`);
+        console.log(`    Edge lengths: AB=${edgeAB.toExponential(4)}, AC=${edgeAC.toExponential(4)}, BC=${edgeBC.toExponential(4)}`);
+
+        // Check if degenerate
+        if (area < GEOMETRY_TOLERANCES.MIN_TRIANGLE_AREA) {
+          console.log(`    ⚠️ Warning: Degenerate triangle (area < ${GEOMETRY_TOLERANCES.MIN_TRIANGLE_AREA.toExponential(2)})`);
+        }
+      });
+
+      // Calculate total area
+      const totalArea = polyline.cellDetails.reduce((sum, cell) => {
+        const [i0, i1, i2] = cell.pointIds;
+        const v0 = [positions[i0 * 3], positions[i0 * 3 + 1], positions[i0 * 3 + 2]];
+        const v1 = [positions[i1 * 3], positions[i1 * 3 + 1], positions[i1 * 3 + 2]];
+        const v2 = [positions[i2 * 3], positions[i2 * 3 + 1], positions[i2 * 3 + 2]];
+        const AB = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+        const AC = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+        const cross = [
+          AB[1] * AC[2] - AB[2] * AC[1],
+          AB[2] * AC[0] - AB[0] * AC[2],
+          AB[0] * AC[1] - AB[1] * AC[0]
+        ];
+        const crossMagnitude = Math.sqrt(cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]);
+        return sum + (0.5 * crossMagnitude);
+      }, 0);
+
+      console.log(`  Total Area: ${totalArea.toExponential(6)}`);
+    }
   };
 
   // Update refs when props change

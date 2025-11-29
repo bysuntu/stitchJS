@@ -13,6 +13,7 @@ import {
   detechBoundaryPolylines,
   analyzePolylines
 } from '../ops';
+import { RENDER_ORDER, POLYGON_OFFSET, GEOMETRY_TOLERANCES } from '../renderConfig';
 
 // Helper function to remove degenerate cells (same as VTK version)
 function removeDegenerateCells(polyData) {
@@ -25,7 +26,8 @@ function removeDegenerateCells(polyData) {
   const validCells = [];
   let offset = 0;
   let duplicateCount = 0;
-  let collinearCount = 0;
+  let smallAreaCount = 0;
+  let tinyEdgeCount = 0;
 
   for (let cellId = 0; cellId < numCells; cellId++) {
     const numPts = cellData[offset];
@@ -37,8 +39,8 @@ function removeDegenerateCells(polyData) {
     // Check if triangle has duplicate vertices
     const hasDuplicates = pts[0] === pts[1] || pts[1] === pts[2] || pts[0] === pts[2];
 
-    // Check for collinear vertices (zero area)
-    let isCollinear = false;
+    // Check for degenerate triangles (small area or tiny edges)
+    let isDegenerate = false;
     if (!hasDuplicates && numPts === 3) {
       const v0 = [pointData[pts[0]*3], pointData[pts[0]*3+1], pointData[pts[0]*3+2]];
       const v1 = [pointData[pts[1]*3], pointData[pts[1]*3+1], pointData[pts[1]*3+2]];
@@ -46,29 +48,47 @@ function removeDegenerateCells(polyData) {
 
       const edge1 = [v1[0]-v0[0], v1[1]-v0[1], v1[2]-v0[2]];
       const edge2 = [v2[0]-v0[0], v2[1]-v0[1], v2[2]-v0[2]];
+      const edge3 = [v2[0]-v1[0], v2[1]-v1[1], v2[2]-v1[2]];
 
-      const cross = [
-        edge1[1]*edge2[2] - edge1[2]*edge2[1],
-        edge1[2]*edge2[0] - edge1[0]*edge2[2],
-        edge1[0]*edge2[1] - edge1[1]*edge2[0]
-      ];
-      const area = Math.sqrt(cross[0]*cross[0] + cross[1]*cross[1] + cross[2]*cross[2]);
+      // Calculate edge lengths
+      const len1 = Math.sqrt(edge1[0]*edge1[0] + edge1[1]*edge1[1] + edge1[2]*edge1[2]);
+      const len2 = Math.sqrt(edge2[0]*edge2[0] + edge2[1]*edge2[1] + edge2[2]*edge2[2]);
+      const len3 = Math.sqrt(edge3[0]*edge3[0] + edge3[1]*edge3[1] + edge3[2]*edge3[2]);
 
-      isCollinear = area < 1e-10;
+      // Check for tiny edges
+      if (len1 < GEOMETRY_TOLERANCES.MIN_EDGE_LENGTH ||
+          len2 < GEOMETRY_TOLERANCES.MIN_EDGE_LENGTH ||
+          len3 < GEOMETRY_TOLERANCES.MIN_EDGE_LENGTH) {
+        isDegenerate = true;
+        tinyEdgeCount++;
+      } else {
+        // Calculate triangle area using cross product
+        const cross = [
+          edge1[1]*edge2[2] - edge1[2]*edge2[1],
+          edge1[2]*edge2[0] - edge1[0]*edge2[2],
+          edge1[0]*edge2[1] - edge1[1]*edge2[0]
+        ];
+        const crossMag = Math.sqrt(cross[0]*cross[0] + cross[1]*cross[1] + cross[2]*cross[2]);
+        const area = 0.5 * crossMag;
+
+        // Check if area is too small
+        if (area < GEOMETRY_TOLERANCES.MIN_TRIANGLE_AREA) {
+          isDegenerate = true;
+          smallAreaCount++;
+        }
+      }
     }
 
     if (hasDuplicates) {
       duplicateCount++;
-    } else if (isCollinear) {
-      collinearCount++;
-    } else {
+    } else if (!isDegenerate) {
       validCells.push(numPts, ...pts);
     }
 
     offset += numPts + 1;
   }
 
-  console.log(`Removed ${duplicateCount} duplicate and ${collinearCount} collinear triangles`);
+  console.log(`Removed degenerate triangles: ${duplicateCount} with duplicate vertices, ${smallAreaCount} with area < ${GEOMETRY_TOLERANCES.MIN_TRIANGLE_AREA.toExponential(2)}, ${tinyEdgeCount} with tiny edges`);
 
   const newPolyData = vtkPolyData.newInstance();
   newPolyData.setPoints(points);
@@ -188,19 +208,24 @@ function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProce
 
   return (
     <>
-      {/* Main Mesh - Show even before processing */}
+      {/* Main Mesh - Show even before processing - Lowest priority */}
       {settings.showMesh && geometry && (
-        <mesh geometry={geometry}>
+        <mesh geometry={geometry} renderOrder={RENDER_ORDER.MESH}>
           <meshStandardMaterial
             color={settings.meshColor}
             opacity={settings.meshOpacity}
             transparent={settings.meshOpacity < 1}
             side={THREE.DoubleSide}
+            depthTest={true}
+            depthWrite={settings.meshOpacity >= 1}
+            polygonOffset={true}
+            polygonOffsetFactor={POLYGON_OFFSET.MESH.factor}
+            polygonOffsetUnits={POLYGON_OFFSET.MESH.units}
           />
         </mesh>
       )}
 
-      {/* Wireframe - Show even before processing */}
+      {/* Wireframe - Show even before processing - Third priority (3) */}
       {settings.showWireframe && geometry && (
         <Wireframe geometry={geometry} color={settings.wireframeColor} />
       )}
@@ -217,7 +242,7 @@ function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProce
             />
           )}
 
-          {/* Corners */}
+          {/* Corners - Highest priority when enabled */}
           {settings.showCorners && (
             <Corners
               corners={processedData.corners}
@@ -226,7 +251,7 @@ function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProce
             />
           )}
 
-          {/* Polylines */}
+          {/* Polylines - Second highest priority */}
           {settings.showPolylines && processedData.polylines && (
             <Polylines
               polylines={processedData.polylines}
@@ -286,9 +311,17 @@ function Corners({ corners, geometry, color }) {
             positions[corner.pointId * 3 + 1],
             positions[corner.pointId * 3 + 2]
           ]}
+          renderOrder={RENDER_ORDER.CORNERS}
         >
           <sphereGeometry args={[0.01, 8, 8]} />
-          <meshBasicMaterial color={color} />
+          <meshBasicMaterial
+            color={color}
+            depthTest={true}
+            depthWrite={true}
+            polygonOffset={true}
+            polygonOffsetFactor={POLYGON_OFFSET.CORNERS.factor}
+            polygonOffsetUnits={POLYGON_OFFSET.CORNERS.units}
+          />
         </mesh>
       ))}
     </group>
@@ -344,19 +377,22 @@ function Polylines({ polylines, geometry, color, currentIndex, cellOpacity }) {
 
   return (
     <group key={`polyline-${currentIndex}`}>
-      {/* Polyline */}
-      <line key={`line-${currentIndex}`} geometry={lineGeometry}>
+      {/* Polyline - Second highest */}
+      <line key={`line-${currentIndex}`} geometry={lineGeometry} renderOrder={RENDER_ORDER.POLYLINE_LINE}>
         <lineBasicMaterial
           color={color}
           linewidth={4}
           depthTest={true}
           depthWrite={true}
+          polygonOffset={true}
+          polygonOffsetFactor={POLYGON_OFFSET.POLYLINE_LINE.factor}
+          polygonOffsetUnits={POLYGON_OFFSET.POLYLINE_LINE.units}
         />
       </line>
 
-      {/* Highlighted Cells */}
+      {/* Highlighted Cells (Facets) - Highest priority */}
       {cellGeometry && (
-        <mesh key={`mesh-${currentIndex}`} geometry={cellGeometry}>
+        <mesh key={`mesh-${currentIndex}`} geometry={cellGeometry} renderOrder={RENDER_ORDER.POLYLINE_FACETS}>
           <meshBasicMaterial
             color="#0088ff"
             opacity={cellOpacity}
@@ -365,8 +401,8 @@ function Polylines({ polylines, geometry, color, currentIndex, cellOpacity }) {
             depthTest={true}
             depthWrite={cellOpacity >= 1}
             polygonOffset={true}
-            polygonOffsetFactor={-1}
-            polygonOffsetUnits={-1}
+            polygonOffsetFactor={POLYGON_OFFSET.POLYLINE_FACETS.factor}
+            polygonOffsetUnits={POLYGON_OFFSET.POLYLINE_FACETS.units}
           />
         </mesh>
       )}
@@ -382,8 +418,16 @@ function Wireframe({ geometry, color }) {
   }, [geometry]);
 
   return (
-    <lineSegments geometry={wireframeGeometry}>
-      <lineBasicMaterial color={color} linewidth={1} />
+    <lineSegments geometry={wireframeGeometry} renderOrder={RENDER_ORDER.WIREFRAME}>
+      <lineBasicMaterial
+        color={color}
+        linewidth={1}
+        depthTest={true}
+        depthWrite={false}
+        polygonOffset={true}
+        polygonOffsetFactor={POLYGON_OFFSET.WIREFRAME.factor}
+        polygonOffsetUnits={POLYGON_OFFSET.WIREFRAME.units}
+      />
     </lineSegments>
   );
 }

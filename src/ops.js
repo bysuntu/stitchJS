@@ -352,14 +352,16 @@ const point2SegmentDistance = (point, segment, tolerance = 1e-8) => {
 
 const coupleTwoPolyLines = (polyData, polyLine1, polyLine2, cellMap, tolerance) => {
 
-  const internals1 = polyLine1.slice(1, -1);
+  const internals1 = polyLine1.slice(1, -1); // Exclude endpoints
+
   if (internals1.length === 0)
     return;
+
+  console.log('internals1: ', internals1);
 
   const cells = polyData.getPolys();
   const cellData = cells.getData();
   const points = polyData.getPoints();
-
 
   const extractPoints = (polyLine) => {
     return polyLine.slice(1).map((element) => {
@@ -382,7 +384,7 @@ const coupleTwoPolyLines = (polyData, polyLine1, polyLine2, cellMap, tolerance) 
     const point = points.getData().slice(pointId * 3, pointId * 3 + 3);
     segments2.forEach(segment => {
       const [cellId, sideId, pointIds, pointCords] = segment;
-      const { distance, t } = point2SegmentDistance(point, pointCords, PROXIMITY_TOLERANCE);
+      const { distance, t } = point2SegmentDistance(point, pointCords, GEOMETRY_TOLERANCES.PROXIMITY_TOLERANCE);
       if (distance <= tolerance && t >= 0 && t <= 1) {
         // pointMap.set(pointId, [cellId, sideId, t]);
         if (!cellMap.has(cellId))
@@ -460,6 +462,9 @@ function refineTriangle(orderedPoints, polyData) {
 
 function reTriangulateCells(polyData, stitchMap) {
   const cells = polyData.getPolys();
+  const cellData = cells.getData();
+  const points = polyData.getPoints();
+  // const pointData = points.getData();
 
   const cells_to_remove = new Set();
   const cells_to_add = vtkCellArray.newInstance();
@@ -467,11 +472,14 @@ function reTriangulateCells(polyData, stitchMap) {
     cells_to_remove.add(cellId);
     const orderedPoints = [[], [], []];
     info.forEach((sidePoints, sideId) => {
-      const start_point = cells.getCellPoints(cellId)[sideId];
+      // const start_point = cells.getCellPoints(cellId)[sideId];
+      // First element is numebr of points
+      const start_point = cellData[cellId * 4 + sideId + 1]; 
       const follow_point = Array.from(sidePoints).sort((a, b) => a[0] - b[0]).map(p => p[1]);
       orderedPoints[sideId].push(start_point);
       orderedPoints[sideId].push(...follow_point);
     })
+    console.log('ordered points: ', orderedPoints);
     const newTriangles = refineTriangle(orderedPoints, polyData);
     newTriangles.forEach(triangle => {
       // Add triangle to cell array (format: [numPoints, pointId1, pointId2, pointId3])
@@ -486,8 +494,8 @@ function reTriangulateCells(polyData, stitchMap) {
   // Copy unchanged cells
   for (let cellId = 0; cellId < numCells; cellId++) {
     if (!cells_to_remove.has(cellId)) {
-      const pointIds = cells.getCellPoints(cellId);
-      newCellData.push(pointIds.length, ...pointIds);
+      const pointIds = cellData.slice(cellId * 4, cellId * 4 + 4);
+      newCellData.push(...pointIds);
     }
   }
 

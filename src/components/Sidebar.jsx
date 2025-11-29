@@ -355,15 +355,15 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
           )}
           <div className="control-group">
             <label>
-              Cell Transparency: <span>{Math.round(settings.cellOpacity * 100)}</span>%
+              Mesh Transparency: <span>{Math.round(settings.meshOpacity * 100)}</span>%
             </label>
             <input
               type="range"
               min="0"
               max="100"
               step="5"
-              value={settings.cellOpacity * 100}
-              onChange={(e) => onSettingsChange({ cellOpacity: parseFloat(e.target.value) / 100 })}
+              value={settings.meshOpacity * 100}
+              onChange={(e) => onSettingsChange({ meshOpacity: parseFloat(e.target.value) / 100 })}
             />
           </div>
         </div>

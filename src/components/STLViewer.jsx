@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { useLoader } from '@react-three/fiber';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import * as THREE from 'three';
 import vtkPolyData from '@kitware/vtk.js/Common/DataModel/PolyData';
@@ -129,6 +129,7 @@ function polyDataToThreeGeometry(polyData) {
 function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProcess, playback }) {
   const [geometry, setGeometry] = useState(null);
   const [processedData, setProcessedData] = useState(null);
+  const meshMaterialRef = useRef();
 
   // Load STL file and prepare geometry (but don't process yet)
   useEffect(() => {
@@ -206,21 +207,31 @@ function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProce
     onProcess(data);
   }, [shouldProcess, geometry, settings.angleThreshold, onProcess]);
 
+  // Update mesh material opacity on every frame
+  useFrame(() => {
+    if (meshMaterialRef.current) {
+      if (meshMaterialRef.current.opacity !== settings.meshOpacity) {
+        meshMaterialRef.current.opacity = settings.meshOpacity;
+        meshMaterialRef.current.transparent = true;
+        meshMaterialRef.current.depthWrite = settings.meshOpacity >= 1;
+        meshMaterialRef.current.needsUpdate = true;
+      }
+    }
+  });
+
   return (
     <>
       {/* Main Mesh - Show even before processing - Lowest priority */}
       {settings.showMesh && geometry && (
         <mesh geometry={geometry} renderOrder={RENDER_ORDER.MESH}>
           <meshStandardMaterial
+            ref={meshMaterialRef}
             color={settings.meshColor}
             opacity={settings.meshOpacity}
-            transparent={settings.meshOpacity < 1}
+            transparent={true}
             side={THREE.DoubleSide}
             depthTest={true}
             depthWrite={settings.meshOpacity >= 1}
-            polygonOffset={true}
-            polygonOffsetFactor={POLYGON_OFFSET.MESH.factor}
-            polygonOffsetUnits={POLYGON_OFFSET.MESH.units}
           />
         </mesh>
       )}
@@ -258,7 +269,6 @@ function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProce
               geometry={processedData.geometry}
               color={settings.polylineColor}
               currentIndex={playback.currentIndex}
-              cellOpacity={settings.cellOpacity}
             />
           )}
         </>
@@ -329,7 +339,7 @@ function Corners({ corners, geometry, color }) {
 }
 
 // Polylines Component
-function Polylines({ polylines, geometry, color, currentIndex, cellOpacity }) {
+function Polylines({ polylines, geometry, color, currentIndex }) {
   const positions = geometry.attributes.position.array;
 
   if (currentIndex < 0 || currentIndex >= polylines.length) return null;
@@ -390,16 +400,16 @@ function Polylines({ polylines, geometry, color, currentIndex, cellOpacity }) {
         />
       </line>
 
-      {/* Highlighted Cells (Facets) - Highest priority */}
+      {/* Highlighted Cells (Facets) - Highest priority - Always fully opaque */}
       {cellGeometry && (
         <mesh key={`mesh-${currentIndex}`} geometry={cellGeometry} renderOrder={RENDER_ORDER.POLYLINE_FACETS}>
           <meshBasicMaterial
             color="#0088ff"
-            opacity={cellOpacity}
-            transparent={cellOpacity < 1}
+            opacity={1.0}
+            transparent={false}
             side={THREE.DoubleSide}
             depthTest={true}
-            depthWrite={cellOpacity >= 1}
+            depthWrite={true}
             polygonOffset={true}
             polygonOffsetFactor={POLYGON_OFFSET.POLYLINE_FACETS.factor}
             polygonOffsetUnits={POLYGON_OFFSET.POLYLINE_FACETS.units}
@@ -425,8 +435,8 @@ function Wireframe({ geometry, color }) {
         depthTest={true}
         depthWrite={false}
         polygonOffset={true}
-        polygonOffsetFactor={POLYGON_OFFSET.WIREFRAME.factor}
-        polygonOffsetUnits={POLYGON_OFFSET.WIREFRAME.units}
+        polygonOffsetFactor={-1.0}
+        polygonOffsetUnits={-1.0}
       />
     </lineSegments>
   );

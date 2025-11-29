@@ -27,8 +27,8 @@ export const POLYGON_OFFSET = {
 
   // Wireframe
   WIREFRAME: {
-    factor: -3,
-    units: -3,
+    factor: -1,
+    units: -1,
   },
 
   // Polylines

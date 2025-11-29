@@ -1,0 +1,41 @@
+Hello! I've analyzed the code again and found the specific reason the wireframe is still not reliably visible. The issue is a conflict between rendering properties on the mesh and the wireframe.
+
+1.  **The Problem (Conflicting Polygon Offsets):** The core issue is still z-fighting. Your code currently applies `polygonOffset` to *both* the main mesh and the wireframe. This pushes both surfaces forward in the render depth, meaning they continue to fight for visibility in the same space. The `polygonOffset` on the main mesh is unnecessary and is the cause of the problem.
+
+2.  **The Solution:** The correct approach is to only apply an offset to the wireframe, ensuring it is always drawn "on top" of the mesh.
+    *   **Remove `polygonOffset` from the Mesh:** The `meshStandardMaterial` should not have `polygonOffset` properties.
+    *   **Set a Negative `polygonOffset` on the Wireframe:** The wireframe's `lineBasicMaterial` should have a negative `polygonOffsetFactor` and `polygonOffsetUnits` (e.g., -1.0). This pulls it towards the camera in the depth buffer, guaranteeing it renders over the mesh.
+    *   **Keep `depthTest` enabled** for the wireframe but disable `depthWrite`. This ensures correct rendering with other objects.
+
+**Conclusion:** By removing the unnecessary polygon offset from the main mesh and applying a specific negative offset to the wireframe, the z-fighting will be resolved, and the wireframe will be consistently visible regardless of the mesh's transparency.
+
+**Suggested Code Modification for `src/components/STLViewer.jsx`:**
+```diff
+--- a/src/components/STLViewer.jsx
++++ b/src/components/STLViewer.jsx
+@@ -291,10 +291,7 @@
+             side={THREE.DoubleSide}
+             depthTest={true}
+             depthWrite={settings.meshOpacity >= 1}
+-            polygonOffset={true}
+-            polygonOffsetFactor={POLYGON_OFFSET.MESH.factor}
+-            polygonOffsetUnits={POLYGON_OFFSET.MESH.units}
+           />
+         </mesh>
+       )}
+@@ -522,11 +519,11 @@
+       <lineBasicMaterial
+         color={color}
+         linewidth={1}
+-        depthTest={false}
++        depthTest={true}
+         depthWrite={false}
+         polygonOffset={true}
+-        polygonOffsetFactor={POLYGON_OFFSET.WIREFRAME.factor}
+-        polygonOffsetUnits={POLYGON_OFFSET.WIREFRAME.units}
++        polygonOffsetFactor={-1.0}
++        polygonOffsetUnits={-1.0}
+       />
+     </lineSegments>
+   );
+```

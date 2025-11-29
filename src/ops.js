@@ -357,12 +357,15 @@ const coupleTwoPolyLines = (polyData, polyLine1, polyLine2, cellMap, tolerance) 
     return;
 
   const cells = polyData.getPolys();
+  const cellData = cells.getData();
   const points = polyData.getPoints();
+
 
   const extractPoints = (polyLine) => {
     return polyLine.slice(1).map((element) => {
       const [, , cellId, sideId] = element;
-      const triIds = cells.getCellPoints(cellId);
+      const triIds = cellData.slice(cellId * 4 + 1, cellId * 4 + 4);
+      console.log('tri ids: ', triIds);
       const pointIds = [...triIds, triIds[0]].slice(sideId, sideId + 2);
       const pointCords = pointIds.map(pointId => {
         const idx = pointId * 3;
@@ -374,7 +377,8 @@ const coupleTwoPolyLines = (polyData, polyLine1, polyLine2, cellMap, tolerance) 
   // const segments1 = extractPoints(polyLine1);
   const segments2 = extractPoints(polyLine2);
   internals1.forEach(element => {
-    const [pointId] = element[0];
+    console.log('element: ', element);
+    const pointId = element[0];
     const point = points.getData().slice(pointId * 3, pointId * 3 + 3);
     segments2.forEach(segment => {
       const [cellId, sideId, pointIds, pointCords] = segment;

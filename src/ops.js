@@ -367,22 +367,22 @@ const coupleTwoPolyLines = (polyData, polyLine1, polyLine2, cellMap, tolerance) 
     return polyLine.slice(1).map((element) => {
       const [, , cellId, sideId] = element;
       const triIds = cellData.slice(cellId * 4 + 1, cellId * 4 + 4);
-      console.log('tri ids: ', triIds);
       const pointIds = [...triIds, triIds[0]].slice(sideId, sideId + 2);
       const pointCords = pointIds.map(pointId => {
-        const idx = pointId * 3;
-        return [points.getData()[idx], points.getData()[idx + 1], points.getData()[idx + 2]];
+        // const idx = pointId * 3;
+        // return [points.getData()[idx], points.getData()[idx + 1], points.getData()[idx + 2]];
+        return points.getData().slice(pointId * 3, pointId * 3 + 3);
       });
       return [cellId, sideId, pointIds, pointCords];
     })
   }
   // const segments1 = extractPoints(polyLine1);
   const segments2 = extractPoints(polyLine2);
+  const recording_ = [];
   internals1.forEach(element => {
-    console.log('element: ', element);
     const pointId = element[0];
     const point = points.getData().slice(pointId * 3, pointId * 3 + 3);
-    segments2.forEach(segment => {
+    segments2.some(segment => {
       const [cellId, sideId, pointIds, pointCords] = segment;
       const { distance, t } = point2SegmentDistance(point, pointCords, GEOMETRY_TOLERANCES.PROXIMITY_TOLERANCE);
       if (distance <= tolerance && t >= 0 && t <= 1) {
@@ -395,9 +395,13 @@ const coupleTwoPolyLines = (polyData, polyLine1, polyLine2, cellMap, tolerance) 
         else {
           cellMap.get(cellId)[sideId].add([t, pointId]);
         }
+        recording_.push([pointId, cellId, sideId, distance, t]);
+        return true;
       }
     })
   })
+  console.log('internals1: ', internals1, 'length: ', internals1.length);
+  console.log('recording_: ', recording_, 'length: ', recording_.length);
 }
 
 function calTriArea(p0, p1, p2) {
@@ -464,7 +468,7 @@ function reTriangulateCells(polyData, stitchMap) {
   const cells = polyData.getPolys();
   const cellData = cells.getData();
   const points = polyData.getPoints();
-  // const pointData = points.getData();
+  const pointData = points.getData();
 
   const cells_to_remove = new Set();
   const cells_to_add = vtkCellArray.newInstance();
@@ -474,10 +478,12 @@ function reTriangulateCells(polyData, stitchMap) {
     info.forEach((sidePoints, sideId) => {
       // const start_point = cells.getCellPoints(cellId)[sideId];
       // First element is numebr of points
-      const start_point = cellData[cellId * 4 + sideId + 1]; 
+      const start_point = cellData[cellId * 4 + 1 + sideId]; // Index of the first point
+      const end_point = cellData[cellId * 4 + 1 + (sideId + 1) % 3]; // Index of the last point
       const follow_point = Array.from(sidePoints).sort((a, b) => a[0] - b[0]).map(p => p[1]);
       orderedPoints[sideId].push(start_point);
       orderedPoints[sideId].push(...follow_point);
+      orderedPoints[sideId].push(end_point);
     })
     console.log('ordered points: ', orderedPoints);
     const newTriangles = refineTriangle(orderedPoints, polyData);
@@ -551,6 +557,17 @@ export function stitchEdge(polyData, polyLineArray) {
       }
     }
   });
+
+  // Show the content of stitchMap for debugging
+  stitchMap.forEach((info, cellId) => {
+    console.log('cellId: ', cellId);
+    info.forEach((sidePoints, sideId) => {
+      console.log('sideId: ', sideId);
+      sidePoints.forEach(point => {
+        console.log('point: ', point);
+      })
+    })
+  })
 
   // Topology change to remove the cell will be split. Triangulate the those cells with split points to make them conformal.
   reTriangulateCells(polyData, stitchMap);

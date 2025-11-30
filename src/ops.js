@@ -1,9 +1,9 @@
-import { saveAs } from 'file-saver';
 // Core operations for boundary detection and polyline tracing
 
 import { GEOMETRY_TOLERANCES } from './renderConfig';
 import vtkCellArray from '@kitware/vtk.js/Common/Core/CellArray';
 import vtk from "@kitware/vtk.js/vtk";
+import { saveAs } from 'file-saver';
 
 
 export function detectBoundaryEdgesSTLWithAdjacency(polyData) {
@@ -625,8 +625,119 @@ export function polyDataToASCII(polyData) {
   return lines.join('\n');
 }
 
-export function downloadPolyDataAsASCII(polyData, filename = 'cleaned.vtk') {
+export async function downloadPolyDataAsASCII(polyData, filename = 'cleaned.vtk') {
   const data = polyDataToASCII(polyData);
   const blob = new Blob([data], { type: 'text/plain;charset=utf-8' });
-  saveAs(blob, filename);
+  // Use the File System Access API when available (lets user choose location),
+  // otherwise fall back to prompting for a filename and using file-saver.
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{
+          description: 'VTK PolyData File',
+          accept: {
+            'text/plain': ['.vtk'],
+          },
+        }],
+      });
+
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+
+      console.log('File saved successfully via showSaveFilePicker!');
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        console.log('User aborted the save picker');
+        return;
+      }
+      console.error('Could not save the file via showSaveFilePicker:', err);
+      // fall through to fallback below
+    }
+  }
+
+  // Fallback: ask for a filename (so the user can choose a name) and trigger download
+  try {
+    let chosenName = filename;
+    // Some browsers will still show a Save As dialog when downloading a blob, but
+    // to make filename explicit we prompt the user for a preferred filename.
+    try {
+      const userInput = window.prompt('Enter filename for VTK export', filename);
+      // If user pressed Cancel, window.prompt returns null — abort saving
+      if (userInput === null) {
+        console.log('User cancelled filename prompt; aborting VTK save.');
+        return;
+      }
+      if (userInput && userInput.trim().length > 0) {
+        chosenName = userInput.trim();
+      }
+    } catch (e) {
+      // ignore prompt errors and use default filename
+    }
+
+    // Use file-saver which will suggest the filename and trigger browser download
+    saveAs(blob, chosenName);
+    console.log('File saved via fallback download (file-saver).');
+  } catch (err) {
+    console.error('Could not save the file via fallback method:', err);
+  }
+}
+
+/**
+ * Request write permission for a file or directory handle.
+ * Returns true if permission is granted.
+ */
+export async function ensureWritePermission(handle) {
+  if (!handle) return false;
+  try {
+    const opts = { mode: 'readwrite' };
+    // queryPermission may not exist on some handles
+    if (handle.queryPermission) {
+      const q = await handle.queryPermission(opts);
+      if (q === 'granted') return true;
+    }
+    if (handle.requestPermission) {
+      const r = await handle.requestPermission(opts);
+      return r === 'granted';
+    }
+    // Fallback optimistic return
+    return true;
+  } catch (err) {
+    console.error('Permission check failed', err);
+    return false;
+  }
+}
+
+/**
+ * Save polyData as ASCII into a chosen directory handle.
+ * dirHandle: obtained from window.showDirectoryPicker()
+ */
+export async function savePolyDataToDirectory(dirHandle, polyData, filename = 'cleaned.vtk') {
+  if (!dirHandle) throw new Error('No directory handle provided');
+
+  const data = polyDataToASCII(polyData);
+  const blob = new Blob([data], { type: 'text/plain;charset=utf-8' });
+
+  try {
+    // Create or get the file inside the directory
+    const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+
+    // Request permission for the file
+    const granted = await ensureWritePermission(fileHandle);
+    if (!granted) {
+      throw new Error('Write permission denied for file');
+    }
+
+    const writable = await fileHandle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+
+    console.log(`Saved ${filename} to chosen directory`);
+    return true;
+  } catch (err) {
+    console.error('Failed to save file to directory', err);
+    throw err;
+  }
 }

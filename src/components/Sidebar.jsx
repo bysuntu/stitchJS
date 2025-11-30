@@ -1,10 +1,13 @@
 import { useRef, useEffect } from 'react';
 import { GEOMETRY_TOLERANCES } from '../renderConfig';
-import { stitchEdge, downloadPolyDataAsASCII } from '../ops';
+import { stitchEdge, downloadPolyDataAsASCII, savePolyDataToDirectory } from '../ops';
+import { useState } from 'react';
 import { threeToPolyData } from '../geometryAdapter';
 
 function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry, processedData, playback, onPlaybackChange, cleanedPolyData }) {
   const fileInputRef = useRef(null);
+  const [directoryHandle, setDirectoryHandle] = useState(null);
+  const [directoryName, setDirectoryName] = useState('');
   const playIntervalRef = useRef(null);
   const playbackRef = useRef(playback);
   const processedDataRef = useRef(processedData);
@@ -20,8 +23,52 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
     console.log('handleDownloadVTK called');
     console.log('cleanedPolyData:', cleanedPolyData);
     if (cleanedPolyData) {
-      downloadPolyDataAsASCII(cleanedPolyData, 'cleaned.vtk');
+      // If a directory handle has been chosen, save into it.
+      if (directoryHandle && window.showDirectoryPicker) {
+        (async () => {
+          try {
+            const filename = window.prompt('Enter filename for VTK export', 'cleaned.vtk');
+            if (filename === null) {
+              console.log('User cancelled filename prompt; aborting save to directory.');
+              return;
+            }
+            await savePolyDataToDirectory(directoryHandle, cleanedPolyData, filename.trim() || 'cleaned.vtk');
+            console.log('Saved VTK to chosen directory');
+          } catch (err) {
+            console.error('Error saving to directory:', err);
+            // Fallback to save picker/download
+            downloadPolyDataAsASCII(cleanedPolyData, 'cleaned.vtk');
+          }
+        })();
+      } else {
+        downloadPolyDataAsASCII(cleanedPolyData, 'cleaned.vtk');
+      }
     }
+  };
+
+  const handleChooseFolder = async () => {
+    if (!window.showDirectoryPicker) {
+      alert('Directory picker is not supported in this browser. Use Chrome/Edge or use the normal Download button.');
+      return;
+    }
+
+    try {
+      const handle = await window.showDirectoryPicker();
+      setDirectoryHandle(handle);
+      setDirectoryName(handle.name || 'Selected Folder');
+      console.log('Directory chosen:', handle);
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        console.log('User cancelled directory picker');
+      } else {
+        console.error('Directory pick failed', err);
+      }
+    }
+  };
+
+  const handleClearFolder = () => {
+    setDirectoryHandle(null);
+    setDirectoryName('');
   };
 
   const handlePlayToggle = () => {
@@ -185,6 +232,17 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
               Download VTK File
             </button>
           )}
+          <div style={{ marginTop: 8 }}>
+            <button onClick={handleChooseFolder} style={{ marginRight: 8 }}>
+              Choose Folder...
+            </button>
+            {directoryName ? (
+              <>
+                <span style={{ marginLeft: 8 }}>{directoryName}</span>
+                <button onClick={handleClearFolder} style={{ marginLeft: 8 }}>Clear</button>
+              </>
+            ) : null}
+          </div>
         </div>
       </div>
 

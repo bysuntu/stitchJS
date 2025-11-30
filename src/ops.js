@@ -485,7 +485,6 @@ function reTriangulateCells(polyData, stitchMap) {
       orderedPoints[sideId].push(...follow_point);
       orderedPoints[sideId].push(end_point);
     })
-    console.log('ordered points: ', orderedPoints);
     const newTriangles = refineTriangle(orderedPoints, polyData);
     newTriangles.forEach(triangle => {
       // Add triangle to cell array (format: [numPoints, pointId1, pointId2, pointId3])

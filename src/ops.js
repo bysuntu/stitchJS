@@ -44,7 +44,6 @@ export function detectBoundaryEdgesSTLWithAdjacency(polyData) {
         edgeNum++;
       } else if (count === 2) {
         // Second time - it's internal, remove both entries
-        console.log('Found internal edge');
         delete edgeCount[h];
         delete edgePoints[h];
       }
@@ -378,6 +377,7 @@ const coupleTwoPolyLines = (polyData, polyLine1, polyLine2, cellMap, tolerance) 
   }
   // const segments1 = extractPoints(polyLine1);
   const segments2 = extractPoints(polyLine2);
+
   const recording_ = [];
   internals1.forEach(element => {
     const pointId = element[0];
@@ -546,7 +546,6 @@ export function stitchEdge(polyData, polyLineArray) {
   // the corresponding pointId is also recorded.
   const stitchMap = new Map();
   polyLineMap.forEach((indexArray, key) => {
-    console.log('key: ', key);
     // Compare each pair of polylines exactly once
     for (let i = 0; i < indexArray.length; i++) {
       const currentPolyLine = polyLineArray[indexArray[i]];
@@ -556,7 +555,7 @@ export function stitchEdge(polyData, polyLineArray) {
       }
     }
   });
-
+  /*
   // Show the content of stitchMap for debugging
   stitchMap.forEach((info, cellId) => {
     console.log('cellId: ', cellId);
@@ -567,7 +566,7 @@ export function stitchEdge(polyData, polyLineArray) {
       })
     })
   })
-
+  */
   // Topology change to remove the cell will be split. Triangulate the those cells with split points to make them conformal.
   reTriangulateCells(polyData, stitchMap);
 }

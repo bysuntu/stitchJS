@@ -8,6 +8,7 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
   const fileInputRef = useRef(null);
   const [directoryHandle, setDirectoryHandle] = useState(null);
   const [directoryName, setDirectoryName] = useState('');
+  const [stitchDone, setStitchDone] = useState(false);
   const playIntervalRef = useRef(null);
   const playbackRef = useRef(playback);
   const processedDataRef = useRef(processedData);
@@ -96,6 +97,8 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
     // Convert Three.js geometry to VTK polyData format for stitching
     const polyData = threeToPolyData(data.geometry);
     stitchEdge(polyData, data.polyLineArray);
+    // Mark that stitch was performed so save button can be shown
+    setStitchDone(true);
   };
 
   const showPolyline = (index) => {
@@ -180,6 +183,11 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
 
   useEffect(() => {
     processedDataRef.current = processedData;
+  }, [processedData]);
+
+  // Reset stitchDone when processed data changes (new file/process)
+  useEffect(() => {
+    setStitchDone(false);
   }, [processedData]);
 
   // Handle playback
@@ -432,13 +440,24 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
               onChange={(e) => onSettingsChange({ meshOpacity: parseFloat(e.target.value) / 100 })}
             />
           </div>
-          <button
-            className="stitch-btn"
-            onClick={handleStitchSlit}
-            disabled={!processedData.polyLineArray}
-          >
-            STITCH SLIT
-          </button>
+          <div style={{ marginTop: 10 }}>
+            <button
+              className="stitch-btn"
+              onClick={handleStitchSlit}
+              disabled={!processedData.polyLineArray}
+            >
+              STITCH SLIT
+            </button>
+            {stitchDone && cleanedPolyData && (
+              <button
+                className="stitch-btn"
+                onClick={handleDownloadVTK}
+                style={{ marginTop: 8 }}
+              >
+                SAVE CLEAN VTK
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

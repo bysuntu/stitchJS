@@ -556,20 +556,11 @@ export function stitchEdge(polyData, polyLineArray) {
       }
     }
   });
-  /*
-  // Show the content of stitchMap for debugging
-  stitchMap.forEach((info, cellId) => {
-    console.log('cellId: ', cellId);
-    info.forEach((sidePoints, sideId) => {
-      console.log('sideId: ', sideId);
-      sidePoints.forEach(point => {
-        console.log('point: ', point);
-      })
-    })
-  })
-  */
+
   // Topology change to remove the cell will be split. Triangulate the those cells with split points to make them conformal.
   reTriangulateCells(polyData, stitchMap);
+
+  // Save VTK after repair
 }
 
 export function analyzePolylines(polylines) {
@@ -688,7 +679,7 @@ export async function downloadPolyDataAsASCII(polyData, filename = 'cleaned.vtk'
 /**
  * Request write permission for a file or directory handle.
  * Returns true if permission is granted.
- */
+*/
 export async function ensureWritePermission(handle) {
   if (!handle) return false;
   try {
@@ -713,7 +704,7 @@ export async function ensureWritePermission(handle) {
 /**
  * Save polyData as ASCII into a chosen directory handle.
  * dirHandle: obtained from window.showDirectoryPicker()
- */
+*/
 export async function savePolyDataToDirectory(dirHandle, polyData, filename = 'cleaned.vtk') {
   if (!dirHandle) throw new Error('No directory handle provided');
 

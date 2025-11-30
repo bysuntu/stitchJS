@@ -1,9 +1,9 @@
 import { useRef, useEffect } from 'react';
 import { GEOMETRY_TOLERANCES } from '../renderConfig';
-import { stitchEdge } from '../ops';
+import { stitchEdge, downloadPolyDataAsASCII } from '../ops';
 import { threeToPolyData } from '../geometryAdapter';
 
-function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry, processedData, playback, onPlaybackChange }) {
+function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry, processedData, playback, onPlaybackChange, cleanedPolyData }) {
   const fileInputRef = useRef(null);
   const playIntervalRef = useRef(null);
   const playbackRef = useRef(playback);
@@ -13,6 +13,14 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
     const file = e.target.files[0];
     if (file) {
       onFileSelect(file);
+    }
+  };
+
+  const handleDownloadVTK = () => {
+    console.log('handleDownloadVTK called');
+    console.log('cleanedPolyData:', cleanedPolyData);
+    if (cleanedPolyData) {
+      downloadPolyDataAsASCII(cleanedPolyData, 'cleaned.vtk');
     }
   };
 
@@ -168,6 +176,15 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
           >
             Choose STL File
           </button>
+          {cleanedPolyData && (
+            <button
+              className="file-input-label"
+              style={{ marginTop: '10px' }}
+              onClick={handleDownloadVTK}
+            >
+              Download VTK File
+            </button>
+          )}
         </div>
       </div>
 

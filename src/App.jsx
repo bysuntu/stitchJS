@@ -10,6 +10,7 @@ function App() {
   const [stlFile, setSTLFile] = useState(null);
   const [geometry, setGeometry] = useState(null);
   const [processedData, setProcessedData] = useState(null);
+  const [cleanedPolyData, setCleanedPolyData] = useState(null);
   const [shouldProcess, setShouldProcess] = useState(false);
   const [settings, setSettings] = useState({
     angleThreshold: 30,
@@ -37,8 +38,13 @@ function App() {
     setSTLFile(file);
     setGeometry(null);
     setProcessedData(null);
+    setCleanedPolyData(null);
     setShouldProcess(false);
     setPlayback({ currentIndex: -1, isPlaying: false, speed: 1000 });
+  }, []);
+
+  const handlePolyDataCleaned = useCallback((polyData) => {
+    setCleanedPolyData(polyData);
   }, []);
 
   const handleGeometryLoaded = useCallback((loadedGeometry) => {
@@ -77,6 +83,7 @@ function App() {
         processedData={processedData}
         playback={playback}
         onPlaybackChange={handlePlaybackChange}
+        cleanedPolyData={cleanedPolyData}
       />
       <div className="viewer-container">
         <Canvas
@@ -94,6 +101,7 @@ function App() {
             onGeometryLoaded={handleGeometryLoaded}
             onProcess={handleProcess}
             playback={playback}
+            onPolyDataCleaned={handlePolyDataCleaned}
           />
         </Canvas>
       </div>

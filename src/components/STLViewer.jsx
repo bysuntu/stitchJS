@@ -125,7 +125,7 @@ function polyDataToThreeGeometry(polyData) {
   return geometry;
 }
 
-function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProcess, playback }) {
+function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProcess, playback, onPolyDataCleaned }) {
   const [geometry, setGeometry] = useState(null);
   const [processedData, setProcessedData] = useState(null);
   const meshMaterialRef = useRef();
@@ -164,6 +164,7 @@ function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProce
       setGeometry(processedGeometry);
       setProcessedData(null);
       onGeometryLoaded(processedGeometry);
+      onPolyDataCleaned(finalPolyData);
     };
 
     reader.readAsArrayBuffer(stlFile);

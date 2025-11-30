@@ -84,6 +84,7 @@ function App() {
         playback={playback}
         onPlaybackChange={handlePlaybackChange}
         cleanedPolyData={cleanedPolyData}
+        showFolderPicker={false}
       />
       <div className="viewer-container">
         <Canvas

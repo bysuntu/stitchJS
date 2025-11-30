@@ -4,7 +4,7 @@ import { stitchEdge, downloadPolyDataAsASCII, savePolyDataToDirectory } from '..
 import { useState } from 'react';
 import { threeToPolyData } from '../geometryAdapter';
 
-function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry, processedData, playback, onPlaybackChange, cleanedPolyData }) {
+function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry, processedData, playback, onPlaybackChange, cleanedPolyData, showFolderPicker = true }) {
   const fileInputRef = useRef(null);
   const [directoryHandle, setDirectoryHandle] = useState(null);
   const [directoryName, setDirectoryName] = useState('');
@@ -232,17 +232,19 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
               Download VTK File
             </button>
           )}
-          <div style={{ marginTop: 8 }}>
-            <button onClick={handleChooseFolder} style={{ marginRight: 8 }}>
-              Choose Folder...
-            </button>
-            {directoryName ? (
-              <>
-                <span style={{ marginLeft: 8 }}>{directoryName}</span>
-                <button onClick={handleClearFolder} style={{ marginLeft: 8 }}>Clear</button>
-              </>
-            ) : null}
-          </div>
+          {showFolderPicker && (
+            <div style={{ marginTop: 8 }}>
+              <button onClick={handleChooseFolder} style={{ marginRight: 8 }}>
+                Choose Folder...
+              </button>
+              {directoryName ? (
+                <>
+                  <span style={{ marginLeft: 8 }}>{directoryName}</span>
+                  <button onClick={handleClearFolder} style={{ marginLeft: 8 }}>Clear</button>
+                </>
+              ) : null}
+            </div>
+          )}
         </div>
       </div>
 

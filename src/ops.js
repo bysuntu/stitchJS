@@ -2,6 +2,7 @@
 
 import { GEOMETRY_TOLERANCES } from './renderConfig';
 import vtkCellArray from '@kitware/vtk.js/Common/Core/CellArray';
+import vtkPolyData from '@kitware/vtk.js/Common/DataModel/PolyData';
 import vtk from "@kitware/vtk.js/vtk";
 import { saveAs } from 'file-saver';
 
@@ -469,7 +470,7 @@ function reTriangulateCells(polyData, stitchMap) {
   const cells = polyData.getPolys();
   const cellData = cells.getData();
   const points = polyData.getPoints();
-  const pointData = points.getData();
+  // const pointData = points.getData();
 
   const cells_to_remove = new Set();
   const cells_to_add = vtkCellArray.newInstance();
@@ -512,8 +513,15 @@ function reTriangulateCells(polyData, stitchMap) {
   // Create final cell array and update polyData
   const finalCells = vtkCellArray.newInstance();
   finalCells.setData(Uint32Array.from(newCellData));
-  polyData.setPolys(finalCells);
-  polyData.modified();
+
+  // cleanedPolyData
+  const cleanedPolyData = vtkPolyData.newInstance();
+  cleanedPolyData.setPoints(points);
+  cleanedPolyData.setPolys(finalCells);
+  // polyData.setPolys(finalCells);
+  // polyData.modified();
+
+  return cleanedPolyData
 }
 
 export function stitchEdge(polyData, polyLineArray) {
@@ -558,9 +566,9 @@ export function stitchEdge(polyData, polyLineArray) {
   });
 
   // Topology change to remove the cell will be split. Triangulate the those cells with split points to make them conformal.
-  reTriangulateCells(polyData, stitchMap);
-
+  const cleanedPolyData = reTriangulateCells(polyData, stitchMap);
   // Save VTK after repair
+  return cleanedPolyData;
 }
 
 export function analyzePolylines(polylines) {
@@ -616,7 +624,7 @@ export function polyDataToASCII(polyData) {
   return lines.join('\n');
 }
 
-export async function downloadPolyDataAsASCII(polyData, filename = 'cleaned.vtk') {
+export async function downloadPolyDataAsASCII(polyData, filename = 'repaired.vtk') {
   const data = polyDataToASCII(polyData);
   const blob = new Blob([data], { type: 'text/plain;charset=utf-8' });
   // Use the File System Access API when available (lets user choose location),
@@ -705,7 +713,7 @@ export async function ensureWritePermission(handle) {
  * Save polyData as ASCII into a chosen directory handle.
  * dirHandle: obtained from window.showDirectoryPicker()
 */
-export async function savePolyDataToDirectory(dirHandle, polyData, filename = 'cleaned.vtk') {
+export async function savePolyDataToDirectory(dirHandle, polyData, filename = 'repaired.vtk') {
   if (!dirHandle) throw new Error('No directory handle provided');
 
   const data = polyDataToASCII(polyData);

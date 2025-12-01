@@ -4,7 +4,7 @@ import { stitchEdge, downloadPolyDataAsASCII, savePolyDataToDirectory } from '..
 import { useState } from 'react';
 import { threeToPolyData } from '../geometryAdapter';
 
-function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry, processedData, playback, onPlaybackChange, cleanedPolyData, showFolderPicker = true }) {
+function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry, processedData, playback, onPlaybackChange, cleanedPolyData, onStitchComplete, showFolderPicker = true }) {
   const fileInputRef = useRef(null);
   const [directoryHandle, setDirectoryHandle] = useState(null);
   const [directoryName, setDirectoryName] = useState('');
@@ -20,7 +20,7 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
     }
   };
 
-  const handleDownloadVTK = () => {
+  const handleDownloadVTK = ({ vtkFileName }) => {
     console.log('handleDownloadVTK called');
     console.log('cleanedPolyData:', cleanedPolyData);
     if (cleanedPolyData) {
@@ -28,21 +28,21 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
       if (directoryHandle && window.showDirectoryPicker) {
         (async () => {
           try {
-            const filename = window.prompt('Enter filename for VTK export', 'cleaned.vtk');
+            const filename = window.prompt('Enter filename for VTK export', vtkFileName);
             if (filename === null) {
               console.log('User cancelled filename prompt; aborting save to directory.');
               return;
             }
-            await savePolyDataToDirectory(directoryHandle, cleanedPolyData, filename.trim() || 'cleaned.vtk');
+            await savePolyDataToDirectory(directoryHandle, cleanedPolyData, filename.trim() || vtkFileName);
             console.log('Saved VTK to chosen directory');
           } catch (err) {
             console.error('Error saving to directory:', err);
             // Fallback to save picker/download
-            downloadPolyDataAsASCII(cleanedPolyData, 'cleaned.vtk');
+            downloadPolyDataAsASCII(cleanedPolyData, vtkFileName);
           }
         })();
       } else {
-        downloadPolyDataAsASCII(cleanedPolyData, 'cleaned.vtk');
+        downloadPolyDataAsASCII(cleanedPolyData, vtkFileName);
       }
     }
   };
@@ -96,9 +96,15 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
     console.log('Stitching slit...');
     // Convert Three.js geometry to VTK polyData format for stitching
     const polyData = threeToPolyData(data.geometry);
-    stitchEdge(polyData, data.polyLineArray);
-    // Mark that stitch was performed so save button can be shown
-    setStitchDone(true);
+    try {
+      const cleaned = stitchEdge(polyData, data.polyLineArray);
+      // Notify parent about the cleaned polyData so it can be saved/stored
+      if (onStitchComplete) onStitchComplete(cleaned);
+      // Mark that stitch was performed so save button can be shown
+      setStitchDone(true);
+    } catch (err) {
+      console.error('Error during stitchEdge:', err);
+    }
   };
 
   const showPolyline = (index) => {
@@ -235,7 +241,7 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
             <button
               className="file-input-label"
               style={{ marginTop: '10px' }}
-              onClick={handleDownloadVTK}
+              onClick={() => {handleDownloadVTK({vtkFileName: 'clean.vtk'})}}
             >
               Download VTK File
             </button>
@@ -451,7 +457,7 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
             {stitchDone && cleanedPolyData && (
               <button
                 className="stitch-btn"
-                onClick={handleDownloadVTK}
+                onClick={() => {handleDownloadVTK({vtkFileName: 'repaired.vtk'})}}
                 style={{ marginTop: 8 }}
               >
                 SAVE CLEAN VTK

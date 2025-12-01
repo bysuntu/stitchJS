@@ -84,6 +84,7 @@ function App() {
         playback={playback}
         onPlaybackChange={handlePlaybackChange}
         cleanedPolyData={cleanedPolyData}
+        onStitchComplete={handlePolyDataCleaned}
         showFolderPicker={false}
       />
       <div className="viewer-container">

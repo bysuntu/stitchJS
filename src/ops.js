@@ -358,8 +358,6 @@ const coupleTwoPolyLines = (polyData, polyLine1, polyLine2, cellMap, tolerance) 
   if (internals1.length === 0)
     return;
 
-  console.log('internals1: ', internals1);
-
   const cells = polyData.getPolys();
   const cellData = cells.getData();
   const points = polyData.getPoints();
@@ -402,8 +400,6 @@ const coupleTwoPolyLines = (polyData, polyLine1, polyLine2, cellMap, tolerance) 
       }
     })
   })
-  console.log('internals1: ', internals1, 'length: ', internals1.length);
-  console.log('recording_: ', recording_, 'length: ', recording_.length);
 }
 
 function calTriArea(p0, p1, p2) {
@@ -490,7 +486,7 @@ function reTriangulateCells(polyData, stitchMap) {
     const newTriangles = refineTriangle(orderedPoints, polyData);
     newTriangles.forEach(triangle => {
       // Add triangle to cell array (format: [numPoints, pointId1, pointId2, pointId3])
-      cells_to_add.insertNextCell([3, triangle[0], triangle[1], triangle[2]]);
+      cells_to_add.insertNextCell([triangle[0], triangle[1], triangle[2]]);
     })
   })
 
@@ -561,6 +557,7 @@ export function stitchEdge(polyData, polyLineArray) {
       for (let j = i + 1; j < indexArray.length; j++) {
         const otherPolyLine = polyLineArray[indexArray[j]];
         coupleTwoPolyLines(polyData, currentPolyLine, otherPolyLine, stitchMap, GEOMETRY_TOLERANCES.POLYLINE_DISTANCE_TOLERANCE);
+        coupleTwoPolyLines(polyData, otherPolyLine, currentPolyLine, stitchMap, GEOMETRY_TOLERANCES.POLYLINE_DISTANCE_TOLERANCE);
       }
     }
   });

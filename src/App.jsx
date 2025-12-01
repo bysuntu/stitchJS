@@ -26,6 +26,7 @@ function App() {
     showCorners: true,
     showPolylines: true,
     meshOpacity: 1.0,
+    flatShading: false,
     cellOpacity: 1.0,
   });
   const [playback, setPlayback] = useState({

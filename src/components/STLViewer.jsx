@@ -208,6 +208,14 @@ function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProce
     onProcess(data);
   }, [shouldProcess, geometry, settings.angleThreshold, onProcess]);
 
+  // Update material when flat shading changes
+  useEffect(() => {
+    if (meshMaterialRef.current) {
+      meshMaterialRef.current.flatShading = settings.flatShading;
+      meshMaterialRef.current.needsUpdate = true;
+    }
+  }, [settings.flatShading]);
+
   // Update mesh material opacity on every frame
   useFrame(() => {
     if (meshMaterialRef.current) {
@@ -233,6 +241,7 @@ function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProce
             side={THREE.DoubleSide}
             depthTest={true}
             depthWrite={settings.meshOpacity >= 1}
+            flatShading={settings.flatShading}
           />
         </mesh>
       )}
@@ -429,17 +438,28 @@ function Wireframe({ geometry, color }) {
   }, [geometry]);
 
   return (
-    <lineSegments geometry={wireframeGeometry} renderOrder={RENDER_ORDER.WIREFRAME}>
-      <lineBasicMaterial
-        color={color}
-        linewidth={1}
-        depthTest={true}
-        depthWrite={false}
-        polygonOffset={true}
-        polygonOffsetFactor={-1.0}
-        polygonOffsetUnits={-1.0}
-      />
-    </lineSegments>
+    <>
+      {/* First pass: Render wireframe to depth buffer only */}
+      <lineSegments geometry={wireframeGeometry} renderOrder={RENDER_ORDER.WIREFRAME}>
+        <lineBasicMaterial
+          colorWrite={false} // Don't write to color buffer
+          depthWrite={true}  // Write to depth buffer
+          depthTest={true}
+          polygonOffset={true}
+          polygonOffsetFactor={-1.0}
+          polygonOffsetUnits={-1.0}
+        />
+      </lineSegments>
+      {/* Second pass: Render visible wireframe without depth test */}
+      <lineSegments geometry={wireframeGeometry} renderOrder={RENDER_ORDER.WIREFRAME + 0.1}>
+        <lineBasicMaterial
+          color={color}
+          linewidth={1}
+          depthTest={false} // Render on top
+          depthWrite={false}
+        />
+      </lineSegments>
+    </>
   );
 }
 

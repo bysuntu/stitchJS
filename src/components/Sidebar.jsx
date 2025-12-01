@@ -335,6 +335,15 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
           />
           <label htmlFor="showPolylines">Show Polylines</label>
         </div>
+        <div className="checkbox-group">
+          <input
+            type="checkbox"
+            id="flatShading"
+            checked={settings.flatShading}
+            onChange={(e) => onSettingsChange({ flatShading: e.target.checked })}
+          />
+          <label htmlFor="flatShading">Flat Shading</label>
+        </div>
       </div>
 
       {/* Colors */}

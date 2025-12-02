@@ -330,6 +330,10 @@ def remesh_with_blender(input_file, output_file, edge_length=0.5, use_voxel=True
     output_uv_stl = output_file.replace('.stl', '_uv.stl')
     export_uv_as_mesh(mesh, output_uv_stl)
 
+    # Export 3D mesh with UV data as OBJ (must be done BEFORE remesh, which destroys UVs)
+    output_obj = output_file.replace('.stl', '.obj')
+    export_obj_with_uv(mesh, output_obj)
+
     # Duplicate the object to create an independent copy for the shrinkwrap target.
     # This preserves the original high-detail surface.
     bpy.context.view_layer.objects.active = mesh
@@ -359,10 +363,6 @@ def remesh_with_blender(input_file, output_file, edge_length=0.5, use_voxel=True
     mesh.select_set(True)
     bpy.ops.export_mesh.stl(filepath=output_file, use_selection=True, ascii=True)
     print(f"  ✓ Remeshed STL exported to {output_file} (ASCII format)")
-
-    # Export 3D mesh with UV data as OBJ (before remesh had UV data)
-    output_obj = output_file.replace('.stl', '.obj')
-    export_obj_with_uv(mesh, output_obj)
 
     print("\n" + "=" * 70)
     print("✅ REMESHING COMPLETE")

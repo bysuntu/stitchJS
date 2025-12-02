@@ -1,0 +1,1 @@
+blender --background --python blender_remesh.py -- tube.stl output_tube_remeshed.stl --edge-length 0.005 2>&1

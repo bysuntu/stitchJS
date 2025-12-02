@@ -330,10 +330,13 @@ def remesh_with_blender(input_file, output_file, edge_length=0.5, use_voxel=True
     output_uv_stl = output_file.replace('.stl', '_uv.stl')
     export_uv_as_mesh(mesh, output_uv_stl)
 
-    # Duplicate mesh for shrinkwrap target (preserve original surface)
-    # Create a copy of the original mesh to use as shrinkwrap target
-    import bpy
-    original_mesh_copy = bpy.data.objects.new("OriginalMesh", mesh.data.copy())
+    # Duplicate the object to create an independent copy for the shrinkwrap target.
+    # This preserves the original high-detail surface.
+    bpy.context.view_layer.objects.active = mesh
+    bpy.ops.object.select_all(action='DESELECT')
+    mesh.select_set(True)
+    bpy.ops.object.duplicate()
+    original_mesh_copy = bpy.context.selected_objects[0]
     bpy.context.collection.objects.link(original_mesh_copy)
 
     # Apply isotropic remeshing using voxel remesh with shrinkwrap

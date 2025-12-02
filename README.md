@@ -2,18 +2,29 @@
 
 A browser-based 3D viewer for analyzing STL mesh files, detecting boundary edges, finding sharp corners, and tracing continuous polylines along boundaries.
 
+Built with **React Three Fiber** for modern 3D visualization and VTK.js algorithms for geometry processing.
+
 ## Features
 
-- **STL File Loading**: Load and visualize STL mesh files directly in the browser
+- **STL File Loading**: Load and visualize STL mesh files using Three.js STLLoader
 - **Boundary Detection**: Automatically detect open boundary edges in the mesh
 - **Corner Detection**: Find sharp corners along boundaries with configurable angle threshold
 - **Polyline Tracing**: Trace continuous polylines between corners
 - **Interactive Visualization**:
-  - Toggle visibility of mesh, boundaries, corners, and polylines
+  - Toggle visibility of mesh, wireframe, boundaries, corners, and polylines
   - Customize colors for each element
+  - Adjust mesh opacity
   - View detailed statistics
-  - Explore individual polylines
-- **Real-time Processing**: All computation happens in the browser using VTK.js
+  - Step through individual polylines with playback controls
+- **Real-time Processing**: All computation happens in the browser
+
+## Technology Stack
+
+- **React** + **React Three Fiber** - 3D rendering with declarative React components
+- **Three.js** - 3D graphics engine
+- **@react-three/drei** - Useful helpers for React Three Fiber
+- **VTK.js** - Geometry processing algorithms (boundary detection, point merging)
+- **Vite** - Fast build tool and dev server
 
 ## How It Works
 
@@ -36,12 +47,11 @@ Traces continuous polylines between corners by:
 - Following boundary edges until reaching another corner
 - Avoiding duplicate traversal of edges
 - Computing total euclidean length
+- Tracking associated triangle facets
 
 ## Usage
 
-### Quick Start (Recommended)
-
-The project now uses **VTK.js installed locally via npm** for better reliability and performance.
+### Quick Start
 
 #### 1. Install Dependencies
 ```bash
@@ -53,7 +63,7 @@ npm install
 npm run dev
 ```
 
-Or simply double-click `start-dev.bat` on Windows. The app will automatically open at `http://localhost:8080`
+The app will start at `http://localhost:8080`
 
 #### 3. Build for Production
 ```bash
@@ -62,11 +72,14 @@ npm run build
 
 This creates optimized files in the `dist/` folder that you can deploy to any web server.
 
-### Alternative: Using the Built Files
+### Serving the Built Files
 
 After running `npm run build`, you can serve the `dist/` folder:
 
 ```bash
+# Using Vite preview
+npm run preview
+
 # Using Python 3
 cd dist
 python -m http.server 8000
@@ -79,30 +92,60 @@ cd dist
 php -S localhost:8000
 ```
 
-Then navigate to `http://localhost:8000` in your browser.
+Then navigate to the appropriate localhost URL in your browser.
 
 ### How to Use the App
 
-1. Click "Choose STL File" and select your STL file (or use the included `test.stl`)
-2. Adjust the corner angle threshold if needed (default: 30°)
-3. Click "Process STL" to detect boundaries and polylines
-4. Use the visibility toggles and color pickers to customize the view
+1. Click "Choose STL File" and select your STL file
+2. Wait for the file to load and the mesh to appear
+3. Adjust settings:
+   - **Proximity Tolerance**: Control point merging (default: 1e-5)
+   - **Corner Angle Threshold**: Adjust corner detection sensitivity (default: 30°)
+4. Click "Process STL" to detect boundaries and polylines
+5. Use the playback controls to step through individual polylines
+6. Toggle visibility and customize colors as needed
 
 ## Controls
 
+### File Loading
+- **Choose STL File**: Select an STL file from your computer
+- **Process STL**: Run boundary detection and polyline tracing algorithms
+
 ### Detection Settings
-- **Corner Angle Threshold**: Adjust sensitivity for corner detection (5° - 90°)
-  - Lower values detect sharper corners only
-  - Higher values detect more gradual corners
+- **Proximity Tolerance**: Distance threshold for merging close points
+  - Lower values (1e-6): Only merge very close points
+  - Higher values (1e-3): Merge points further apart
+- **Corner Angle Threshold**: Angle sensitivity for corner detection (5° - 90°)
+  - Lower values: Detect only sharp corners
+  - Higher values: Detect more gradual corners
 
 ### Visibility Toggles
-- **Show Mesh**: Display the original 3D mesh (semi-transparent)
+- **Show Mesh**: Display the original 3D mesh
+- **Show Wireframe**: Display mesh edges
 - **Show Boundary Edges**: Display detected boundary edges (red)
 - **Show Corners**: Display detected corners as spheres (green)
 - **Show Polylines**: Display traced polylines (cyan)
 
+### Mesh Opacity
+- Control transparency of the main mesh (0-100%)
+- Useful for seeing internal boundaries
+
+### Playback Controls
+- **⏮ First**: Jump to first polyline
+- **◀ Previous**: Go to previous polyline
+- **▶ Play/Pause**: Auto-play through all polylines
+- **▶ Next**: Go to next polyline
+- **⏭ Last**: Jump to last polyline
+
+When a polyline is selected, its associated triangle facets are highlighted in blue.
+
 ### Colors
-Customize the color of each visual element using color pickers.
+Customize the color of each visual element using color pickers:
+- Mesh Color
+- Boundary Color
+- Corner Color
+- Polyline Color
+- Wireframe Color
 
 ### Statistics
 View real-time statistics:
@@ -112,39 +155,39 @@ View real-time statistics:
 - Number of corners
 - Number of polylines
 
-### Polyline List
-Browse all detected polylines sorted by length:
-- Number of points in each polyline
-- Total euclidean length
-
 ## File Structure
 
 ```
-stlStitch/
+stitchJS/
 ├── src/
-│   ├── index.html     # Main HTML template with UI
-│   ├── index.js       # Application entry point with VTK.js imports
-│   └── ops.js         # Core algorithms (boundary detection, corner finding, polyline tracing)
-├── dist/              # Built files (generated by webpack)
-│   ├── index.html     # Processed HTML
-│   ├── bundle.js      # Bundled JavaScript with VTK.js
-│   └── test.stl       # Copied test file
-├── node_modules/      # npm dependencies (including @kitware/vtk.js)
-├── package.json       # Project configuration and dependencies
-├── webpack.config.js  # Webpack bundler configuration
-├── start-dev.bat      # Windows batch file to start dev server
-├── ops.jsx            # Original algorithm implementations (reference)
-├── stitch.jsx         # Original usage examples (reference)
-├── test.stl           # Sample STL file for testing
-└── README.md          # This file
+│   ├── main.jsx              # React app entry point
+│   ├── App.jsx               # Main app component with state management
+│   ├── App.css               # Application styles
+│   ├── components/
+│   │   ├── STLViewer.jsx     # 3D viewer using React Three Fiber
+│   │   └── Sidebar.jsx       # UI controls and settings
+│   ├── ops.js                # Boundary detection, corner finding, polyline tracing
+│   ├── geometryAdapter.js    # Three.js ↔ VTK.js format conversion
+│   ├── mergePoints.js        # Point merging utilities (VTK-based)
+│   ├── mergePointsThree.js   # Three.js point merging
+│   └── renderConfig.js       # Render order and polygon offset settings
+├── index.html                # Minimal HTML entry point
+├── package.json              # Dependencies and scripts
+├── vite.config.js            # Vite configuration
+├── ARCHITECTURE.md           # Detailed architecture documentation
+└── README.md                 # This file
 ```
 
 ## Technical Details
 
 ### Dependencies
-- **@kitware/vtk.js** v29.5.0 - 3D rendering and STL parsing (installed via npm)
-- **webpack** v5.89.0 - Module bundler
-- **webpack-dev-server** v4.15.1 - Development server with hot reload
+- **React** v18.3.1 - UI framework
+- **React DOM** v18.3.1 - React renderer for web
+- **@react-three/fiber** v8.18.0 - React renderer for Three.js
+- **@react-three/drei** v9.122.0 - Useful Three.js helpers
+- **Three.js** v0.160.1 - 3D graphics engine
+- **@kitware/vtk.js** v29.5.0 - Geometry processing algorithms
+- **Vite** v7.2.4 - Build tool and dev server
 
 ### Browser Requirements
 - Modern browser with WebGL support
@@ -154,29 +197,36 @@ stlStitch/
 ### NPM Scripts
 - `npm run dev` - Start development server at http://localhost:8080 (with hot reload)
 - `npm run build` - Build optimized production bundle to `dist/` folder
-- `npm start` - Start production server (requires separate server.js implementation)
+- `npm run preview` - Preview production build locally
 
 ### Performance
 - Optimized for meshes with up to 100K triangles
 - All processing is done client-side (no server required)
 - Uses efficient data structures (Map, Set) for adjacency lookups
+- Point merging and degenerate triangle removal for clean geometry
 
 ## Algorithms
+
+### Point Merging
+1. **Exact Duplicate Removal**: Merge points at identical positions (tolerance = 0)
+2. **Proximity Merging**: Merge points within proximity tolerance (default 1e-5)
+3. **Degenerate Triangle Removal**: Remove triangles with duplicate vertices or near-zero area
 
 ### Edge Hashing
 Uses Cantor pairing function for unique edge identification:
 ```javascript
-hash(a, b) = a >= b ? a * a + a + b : b * b + a
+hash(a, b) = b * b + a  (where a < b)
 ```
 
 ### Adjacency Map
-Builds a Map<pointId, Set<neighborIds>> for O(1) neighbor lookups during corner detection and polyline tracing.
+Builds a `Map<pointId, Set<[neighborId, rotation, cellId, apex]>>` for O(1) neighbor lookups during corner detection and polyline tracing.
 
 ### Polyline Tracing
 - Uses edge visit tracking to avoid duplicate traversal
 - Traces from each corner in both directions
 - Stops when hitting another corner or dead end
 - Computes both point count and euclidean length
+- Tracks associated triangle facets for visualization
 
 ## Use Cases
 
@@ -185,13 +235,7 @@ Builds a Map<pointId, Set<neighborIds>> for O(1) neighbor lookups during corner 
 - **Path Planning**: Extract boundary contours for toolpath generation
 - **3D Printing**: Validate model integrity before printing
 - **CAD Analysis**: Analyze boundary curves of complex geometry
-
-## Example Test File
-
-The included `test.stl` file demonstrates:
-- Multiple boundary edges
-- Sharp corners at various angles
-- Continuous polylines along boundaries
+- **Stitching Analysis**: Visualize and analyze boundaries for mesh stitching operations
 
 ## Troubleshooting
 
@@ -206,19 +250,27 @@ The included `test.stl` file demonstrates:
 **Performance issues:**
 - Large meshes (>100K triangles) may take longer to process
 - Consider simplifying the mesh in external software first
+- Adjust proximity tolerance to reduce point count
 
 **Visualization looks wrong:**
 - Try adjusting the angle threshold
 - Toggle different visibility options
-- Reset camera by reloading the page
+- Use the wireframe view to see mesh structure
+- Adjust mesh opacity to see internal features
+
+**Playback controls disabled:**
+- Process the STL file first to detect polylines
+- Ensure polylines were detected (check statistics)
 
 ## License
 
-This project is provided as-is for educational and commercial use.
+MIT License - This project is provided as-is for educational and commercial use.
 
 ## Credits
 
 Built with:
-- VTK.js for 3D visualization
-- Modern JavaScript (ES6+)
+- React Three Fiber for 3D visualization
+- VTK.js for geometry processing algorithms
+- Three.js for 3D rendering
+- Modern JavaScript (ES6+) and React
 - Custom algorithms for boundary detection and polyline tracing

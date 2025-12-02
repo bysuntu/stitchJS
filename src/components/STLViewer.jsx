@@ -1,9 +1,8 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import * as THREE from 'three';
 import vtkPolyData from '@kitware/vtk.js/Common/DataModel/PolyData';
-import vtkPoints from '@kitware/vtk.js/Common/Core/Points';
 import vtkCellArray from '@kitware/vtk.js/Common/Core/CellArray';
 import { removeDuplicatePoints } from '../mergePoints';
 import { threeToPolyData } from '../geometryAdapter';
@@ -126,7 +125,7 @@ function polyDataToThreeGeometry(polyData) {
   return geometry;
 }
 
-function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProcess, playback }) {
+function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProcess, playback, onPolyDataCleaned }) {
   const [geometry, setGeometry] = useState(null);
   const [processedData, setProcessedData] = useState(null);
   const meshMaterialRef = useRef();
@@ -165,6 +164,7 @@ function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProce
       setGeometry(processedGeometry);
       setProcessedData(null);
       onGeometryLoaded(processedGeometry);
+      onPolyDataCleaned(finalPolyData);
     };
 
     reader.readAsArrayBuffer(stlFile);
@@ -188,7 +188,7 @@ function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProce
     console.log(`Found ${corners.length} corners`);
 
     // Trace polylines
-    const polylines = detechBoundaryPolylines(polyData, boundaryData, corners);
+    const { polylines, polyLineArray } = detechBoundaryPolylines(polyData, boundaryData, corners);
     console.log(`Created ${polylines.length} polylines`);
 
     // Analyze and sort
@@ -199,6 +199,7 @@ function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProce
       boundaryData,
       corners,
       polylines: sortedPolylines,
+      polyLineArray,
       numVertices: geometry.attributes.position.count,
       numTriangles: geometry.index.count / 3,
     };
@@ -206,6 +207,14 @@ function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProce
     setProcessedData(data);
     onProcess(data);
   }, [shouldProcess, geometry, settings.angleThreshold, onProcess]);
+
+  // Update material when flat shading changes
+  useEffect(() => {
+    if (meshMaterialRef.current) {
+      meshMaterialRef.current.flatShading = settings.flatShading;
+      meshMaterialRef.current.needsUpdate = true;
+    }
+  }, [settings.flatShading]);
 
   // Update mesh material opacity on every frame
   useFrame(() => {
@@ -232,6 +241,7 @@ function STLViewer({ stlFile, settings, shouldProcess, onGeometryLoaded, onProce
             side={THREE.DoubleSide}
             depthTest={true}
             depthWrite={settings.meshOpacity >= 1}
+            flatShading={settings.flatShading}
           />
         </mesh>
       )}
@@ -428,17 +438,28 @@ function Wireframe({ geometry, color }) {
   }, [geometry]);
 
   return (
-    <lineSegments geometry={wireframeGeometry} renderOrder={RENDER_ORDER.WIREFRAME}>
-      <lineBasicMaterial
-        color={color}
-        linewidth={1}
-        depthTest={true}
-        depthWrite={false}
-        polygonOffset={true}
-        polygonOffsetFactor={-1.0}
-        polygonOffsetUnits={-1.0}
-      />
-    </lineSegments>
+    <>
+      {/* First pass: Render wireframe to depth buffer only */}
+      <lineSegments geometry={wireframeGeometry} renderOrder={RENDER_ORDER.WIREFRAME}>
+        <lineBasicMaterial
+          colorWrite={false} // Don't write to color buffer
+          depthWrite={true}  // Write to depth buffer
+          depthTest={true}
+          polygonOffset={true}
+          polygonOffsetFactor={-1.0}
+          polygonOffsetUnits={-1.0}
+        />
+      </lineSegments>
+      {/* Second pass: Render visible wireframe without depth test */}
+      <lineSegments geometry={wireframeGeometry} renderOrder={RENDER_ORDER.WIREFRAME + 0.1}>
+        <lineBasicMaterial
+          color={color}
+          linewidth={1}
+          depthTest={false} // Render on top
+          depthWrite={false}
+        />
+      </lineSegments>
+    </>
   );
 }
 

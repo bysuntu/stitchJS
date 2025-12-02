@@ -1,8 +1,14 @@
-import React, { useRef, useEffect } from 'react';
+import { useRef, useEffect } from 'react';
 import { GEOMETRY_TOLERANCES } from '../renderConfig';
+import { stitchEdge, downloadPolyDataAsASCII, savePolyDataToDirectory } from '../ops';
+import { useState } from 'react';
+import { threeToPolyData } from '../geometryAdapter';
 
-function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry, processedData, playback, onPlaybackChange }) {
+function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry, processedData, playback, onPlaybackChange, cleanedPolyData, onStitchComplete, showFolderPicker = true }) {
   const fileInputRef = useRef(null);
+  const [directoryHandle, setDirectoryHandle] = useState(null);
+  const [directoryName, setDirectoryName] = useState('');
+  const [stitchDone, setStitchDone] = useState(false);
   const playIntervalRef = useRef(null);
   const playbackRef = useRef(playback);
   const processedDataRef = useRef(processedData);
@@ -12,6 +18,58 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
     if (file) {
       onFileSelect(file);
     }
+  };
+
+  const handleDownloadVTK = ({ vtkFileName }) => {
+    console.log('handleDownloadVTK called');
+    console.log('cleanedPolyData:', cleanedPolyData);
+    if (cleanedPolyData) {
+      // If a directory handle has been chosen, save into it.
+      if (directoryHandle && window.showDirectoryPicker) {
+        (async () => {
+          try {
+            const filename = window.prompt('Enter filename for VTK export', vtkFileName);
+            if (filename === null) {
+              console.log('User cancelled filename prompt; aborting save to directory.');
+              return;
+            }
+            await savePolyDataToDirectory(directoryHandle, cleanedPolyData, filename.trim() || vtkFileName);
+            console.log('Saved VTK to chosen directory');
+          } catch (err) {
+            console.error('Error saving to directory:', err);
+            // Fallback to save picker/download
+            downloadPolyDataAsASCII(cleanedPolyData, vtkFileName);
+          }
+        })();
+      } else {
+        downloadPolyDataAsASCII(cleanedPolyData, vtkFileName);
+      }
+    }
+  };
+
+  const handleChooseFolder = async () => {
+    if (!window.showDirectoryPicker) {
+      alert('Directory picker is not supported in this browser. Use Chrome/Edge or use the normal Download button.');
+      return;
+    }
+
+    try {
+      const handle = await window.showDirectoryPicker();
+      setDirectoryHandle(handle);
+      setDirectoryName(handle.name || 'Selected Folder');
+      console.log('Directory chosen:', handle);
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        console.log('User cancelled directory picker');
+      } else {
+        console.error('Directory pick failed', err);
+      }
+    }
+  };
+
+  const handleClearFolder = () => {
+    setDirectoryHandle(null);
+    setDirectoryName('');
   };
 
   const handlePlayToggle = () => {
@@ -25,6 +83,27 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
     } else {
       // Start playing
       onPlaybackChange({ isPlaying: true });
+    }
+  };
+
+  const handleStitchSlit = () => {
+    const data = processedDataRef.current;
+    if (!data?.polyLineArray || !data?.geometry) {
+      console.warn('No polyline data or geometry available for stitching');
+      return;
+    }
+
+    console.log('Stitching slit...');
+    // Convert Three.js geometry to VTK polyData format for stitching
+    const polyData = threeToPolyData(data.geometry);
+    try {
+      const cleaned = stitchEdge(polyData, data.polyLineArray);
+      // Notify parent about the cleaned polyData so it can be saved/stored
+      if (onStitchComplete) onStitchComplete(cleaned);
+      // Mark that stitch was performed so save button can be shown
+      setStitchDone(true);
+    } catch (err) {
+      console.error('Error during stitchEdge:', err);
     }
   };
 
@@ -112,6 +191,11 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
     processedDataRef.current = processedData;
   }, [processedData]);
 
+  // Reset stitchDone when processed data changes (new file/process)
+  useEffect(() => {
+    setStitchDone(false);
+  }, [processedData]);
+
   // Handle playback
   useEffect(() => {
     if (playback.isPlaying && processedData?.polylines) {
@@ -153,6 +237,28 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
           >
             Choose STL File
           </button>
+          {cleanedPolyData && (
+            <button
+              className="file-input-label"
+              style={{ marginTop: '10px' }}
+              onClick={() => {handleDownloadVTK({vtkFileName: 'clean.vtk'})}}
+            >
+              Download VTK File
+            </button>
+          )}
+          {showFolderPicker && (
+            <div style={{ marginTop: 8 }}>
+              <button onClick={handleChooseFolder} style={{ marginRight: 8 }}>
+                Choose Folder...
+              </button>
+              {directoryName ? (
+                <>
+                  <span style={{ marginLeft: 8 }}>{directoryName}</span>
+                  <button onClick={handleClearFolder} style={{ marginLeft: 8 }}>Clear</button>
+                </>
+              ) : null}
+            </div>
+          )}
         </div>
       </div>
 
@@ -173,19 +279,9 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
           />
         </div>
         <button
+          className="process-btn"
           onClick={onProcess}
           disabled={!geometry}
-          style={{
-            width: '100%',
-            padding: '10px',
-            background: geometry ? '#404040' : '#2a2a2a',
-            border: '1px solid #555',
-            borderRadius: '4px',
-            color: geometry ? '#e0e0e0' : '#666',
-            cursor: geometry ? 'pointer' : 'not-allowed',
-            fontSize: '13px',
-            transition: 'background 0.2s'
-          }}
         >
           Process STL
         </button>
@@ -239,6 +335,15 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
           />
           <label htmlFor="showPolylines">Show Polylines</label>
         </div>
+        <div className="checkbox-group">
+          <input
+            type="checkbox"
+            id="flatShading"
+            checked={settings.flatShading}
+            onChange={(e) => onSettingsChange({ flatShading: e.target.checked })}
+          />
+          <label htmlFor="flatShading">Flat Shading</label>
+        </div>
       </div>
 
       {/* Colors */}
@@ -258,22 +363,6 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
             type="color"
             value={settings.boundaryColor}
             onChange={(e) => onSettingsChange({ boundaryColor: e.target.value })}
-          />
-        </div>
-        <div className="control-group">
-          <label>Corner Color</label>
-          <input
-            type="color"
-            value={settings.cornerColor}
-            onChange={(e) => onSettingsChange({ cornerColor: e.target.value })}
-          />
-        </div>
-        <div className="control-group">
-          <label>Polyline Color</label>
-          <input
-            type="color"
-            value={settings.polylineColor}
-            onChange={(e) => onSettingsChange({ polylineColor: e.target.value })}
           />
         </div>
       </div>
@@ -365,6 +454,24 @@ function Sidebar({ settings, onSettingsChange, onFileSelect, onProcess, geometry
               value={settings.meshOpacity * 100}
               onChange={(e) => onSettingsChange({ meshOpacity: parseFloat(e.target.value) / 100 })}
             />
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <button
+              className="stitch-btn"
+              onClick={handleStitchSlit}
+              disabled={!processedData.polyLineArray}
+            >
+              STITCH SLIT
+            </button>
+            {stitchDone && cleanedPolyData && (
+              <button
+                className="stitch-btn"
+                onClick={() => {handleDownloadVTK({vtkFileName: 'repaired.vtk'})}}
+                style={{ marginTop: 8 }}
+              >
+                SAVE CLEAN VTK
+              </button>
+            )}
           </div>
         </div>
       )}

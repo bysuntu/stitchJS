@@ -1,29 +1,32 @@
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import STLViewer from './components/STLViewer';
 import Sidebar from './components/Sidebar';
+import { DEFAULT_COLORS } from './renderConfig';
 import './App.css';
 
 function App() {
   const [stlFile, setSTLFile] = useState(null);
   const [geometry, setGeometry] = useState(null);
   const [processedData, setProcessedData] = useState(null);
+  const [cleanedPolyData, setCleanedPolyData] = useState(null);
   const [shouldProcess, setShouldProcess] = useState(false);
   const [settings, setSettings] = useState({
     angleThreshold: 30,
     proximityTolerance: 1e-5,
-    meshColor: '#808080',
-    boundaryColor: '#ff0000',
-    cornerColor: '#00ff00',
-    polylineColor: '#00ffff',
-    wireframeColor: '#ffffff',
+    meshColor: DEFAULT_COLORS.MESH,
+    boundaryColor: DEFAULT_COLORS.BOUNDARY,
+    cornerColor: DEFAULT_COLORS.CORNER,
+    polylineColor: DEFAULT_COLORS.POLYLINE,
+    wireframeColor: DEFAULT_COLORS.WIREFRAME,
     showMesh: true,
     showWireframe: true,
     showBoundary: true,
     showCorners: true,
     showPolylines: true,
     meshOpacity: 1.0,
+    flatShading: false,
     cellOpacity: 1.0,
   });
   const [playback, setPlayback] = useState({
@@ -36,8 +39,13 @@ function App() {
     setSTLFile(file);
     setGeometry(null);
     setProcessedData(null);
+    setCleanedPolyData(null);
     setShouldProcess(false);
     setPlayback({ currentIndex: -1, isPlaying: false, speed: 1000 });
+  }, []);
+
+  const handlePolyDataCleaned = useCallback((polyData) => {
+    setCleanedPolyData(polyData);
   }, []);
 
   const handleGeometryLoaded = useCallback((loadedGeometry) => {
@@ -76,6 +84,9 @@ function App() {
         processedData={processedData}
         playback={playback}
         onPlaybackChange={handlePlaybackChange}
+        cleanedPolyData={cleanedPolyData}
+        onStitchComplete={handlePolyDataCleaned}
+        showFolderPicker={false}
       />
       <div className="viewer-container">
         <Canvas
@@ -93,6 +104,7 @@ function App() {
             onGeometryLoaded={handleGeometryLoaded}
             onProcess={handleProcess}
             playback={playback}
+            onPolyDataCleaned={handlePolyDataCleaned}
           />
         </Canvas>
       </div>

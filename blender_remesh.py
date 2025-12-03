@@ -29,7 +29,8 @@ def apply_uv_unwrap(obj, method='SMART_UV_PROJECT'):
     Methods available:
     - SMART_UV_PROJECT: Industry standard, handles complex surfaces well
     - ANGLE_BASED: ABF++ equivalent, angle-preserving
-    - UNWRAP: Angle and area preserving
+    - UNWRAP: Angle and area preserving, requires seams. If no seams are
+              present, it will behave like Smart UV Project.
     """
     # Enter edit mode
     bpy.context.view_layer.objects.active = obj
@@ -50,7 +51,12 @@ def apply_uv_unwrap(obj, method='SMART_UV_PROJECT'):
     elif method == 'ANGLE_BASED':
         bpy.ops.uv.unwrap(method='ANGLE_BASED', margin=0.02)
     else:
-        bpy.ops.uv.unwrap(method='ANGLE_BASED', margin=0.02)
+        # Default to standard unwrap, which respects seams
+        # First, try to select seams if they exist
+        bpy.ops.mesh.select_mode(type='EDGE')
+        bpy.ops.mesh.select_all(action='DESELECT')
+        bpy.ops.mesh.select_seams()
+        bpy.ops.uv.unwrap(margin=0.02)
 
     bpy.ops.object.mode_set(mode='OBJECT')
     print(f"✓ UV unwrapping applied using {method}")
@@ -159,6 +165,127 @@ def apply_smooth_shade(obj):
     bpy.ops.object.mode_set(mode='OBJECT')
 
     print("✓ Smooth shading applied")
+
+def remesh_in_uv_space(obj, edge_length=0.1):
+    """
+    Remeshes the object by flattening it based on its UV map, remeshing the
+    flat version, and then re-applying the 3D shape.
+
+    This advanced workflow uses the Surface Deform modifier to achieve a
+    high-quality remesh that respects the object's parameterization.
+
+    Args:
+        obj (bpy.types.Object): The object to remesh.
+        edge_length (float): The target edge length for the 2D remesh.
+
+    Returns:
+        bpy.types.Object: The newly created remeshed object.
+    """
+    print("\n" + "-"*20 + " Remeshing in UV Space " + "-"*20)
+    
+    # --- Step 1: Create a flattened version of the object from its UV map ---
+    print("[1/4] Creating flattened 2D mesh from UV map...")
+    flat_obj = create_object_from_uv_map(obj, "Flattened_UV_Mesh")
+    if not flat_obj:
+        print("⚠ Aborting UV remesh: Could not create flattened mesh.")
+        return None
+    bpy.context.collection.objects.link(flat_obj)
+
+    # --- Step 2: Remesh the flattened 2D object ---
+    print(f"[2/4] Remeshing the 2D mesh with edge length {edge_length}...")
+    # For 2D, we don't need the shrinkwrap step, so we pass use_voxel=True but no original_mesh
+    apply_remesh(flat_obj, voxel_size=edge_length, use_voxel=True)
+
+    # --- Step 3: Bind the original object to the remeshed flat object ---
+    print("[3/4] Binding original geometry to the remeshed 2D 'cage'...")
+    # The original object will be deformed by the flat one.
+    bpy.context.view_layer.objects.active = obj
+    surface_deform_mod = obj.modifiers.new(name="SurfaceDeform", type='SURFACE_DEFORM')
+    surface_deform_mod.target = flat_obj
+    
+    # The 'Bind' operation links the two meshes. This can take time.
+    bpy.ops.object.surfacedeform_bind(modifier=surface_deform_mod.name)
+
+    # --- Step 4: Create the final geometry ---
+    # Now, we create a new object from the deformed original mesh. This object
+    # has the original's 3D shape but the new topology from the 2D remesh.
+    print("[4/4] Applying deformation to generate final 3D mesh...")
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    deformed_eval_obj = obj.evaluated_get(depsgraph)
+    
+    # Create a new mesh from the evaluated (deformed) object
+    final_mesh_data = bpy.data.meshes.new_from_object(deformed_eval_obj)
+    final_obj = bpy.data.objects.new(f"{obj.name}_UV_Remeshed", final_mesh_data)
+    
+    # Copy the original object's transformation
+    final_obj.matrix_world = obj.matrix_world
+    
+    # Link the final object to the scene
+    bpy.context.collection.objects.link(final_obj)
+
+    # --- Cleanup ---
+    obj.modifiers.remove(surface_deform_mod) # Remove modifier from original
+    bpy.data.objects.remove(flat_obj, do_unlink=True) # Remove the flat helper object
+
+    print("✓ UV space remeshing complete.")
+    return final_obj
+
+def create_object_from_uv_map(source_object, new_object_name="Flattened_UV_Object"):
+    """
+    Creates a new 3D mesh object by 'unfolding' the UV map of a source object.
+
+    This function acts as the reverse of UV unwrapping. It takes the 2D UV
+    coordinates and uses them to generate a new, flat 3D mesh where the
+    vertex positions (X, Y, Z) correspond to the UV coordinates (U, V, 0).
+
+    It is optimized to produce a clean mesh with no duplicate vertices by
+    mapping unique UV coordinates to new 3D vertices.
+
+    Args:
+        source_object (bpy.types.Object): The source Blender object with a UV map.
+        new_object_name (str): The name for the newly created Blender object.
+
+    Returns:
+        bpy.types.Object: A new Blender object containing the flattened 3D
+                          representation of the UV map, or None if the source
+                          object has no UV map.
+    """
+    source_mesh = source_object.data
+    
+    # --- 1. Check for UV Data ---
+    if not source_mesh.uv_layers or not source_mesh.uv_layers.active:
+        print(f"⚠ Warning: Object '{source_object.name}' has no active UV layer. Cannot create flattened mesh.")
+        return None
+
+    uv_layer = source_mesh.uv_layers.active.data
+    
+    # --- 2. Collect UVs and Build New Mesh Topology ---
+    uv_to_new_vert_idx = {}
+    new_verts = []
+    new_faces = []
+    
+    for face in source_mesh.polygons:
+        face_vert_indices = []
+        for loop_index in face.loop_indices:
+            uv = uv_layer[loop_index].uv
+            uv_key = (round(uv.x, 6), round(uv.y, 6))
+
+            if uv_key not in uv_to_new_vert_idx:
+                new_vert_index = len(new_verts)
+                uv_to_new_vert_idx[uv_key] = new_vert_index
+                new_verts.append((uv.x, uv.y, 0.0))
+            
+            face_vert_indices.append(uv_to_new_vert_idx[uv_key])
+        
+        new_faces.append(face_vert_indices)
+
+    # --- 3. Create the New Mesh and Object in Blender ---
+    flat_mesh_data = bpy.data.meshes.new(f"{new_object_name}_Data")
+    flat_mesh_data.from_pydata(new_verts, [], new_faces)
+    flat_mesh_data.update()
+
+    flat_object = bpy.data.objects.new(new_object_name, flat_mesh_data)
+    return flat_object
 
 def write_obj_manual(obj, filepath):
     """Manually write OBJ file with UV coordinates"""
@@ -334,6 +461,25 @@ def remesh_with_blender(input_file, output_file, edge_length=0.5, use_voxel=True
     output_obj = output_file.replace('.stl', '.obj')
     export_obj_with_uv(mesh, output_obj)
 
+    # Create and export the "reverse UV unwrap" object
+    print(f"\n[*] Creating 3D object from UV map (reverse unwrap)...")
+    flattened_uv_object = create_object_from_uv_map(mesh, "Reversed_UV_Object")
+    if flattened_uv_object:
+        # Link to scene to make it exportable
+        bpy.context.collection.objects.link(flattened_uv_object)
+        
+        # Select only this object for export
+        bpy.ops.object.select_all(action='DESELECT')
+        flattened_uv_object.select_set(True)
+        
+        # Export to 'reverse.stl'
+        reverse_stl_path = str(Path(output_file).parent / "reverse.stl")
+        bpy.ops.export_mesh.stl(filepath=reverse_stl_path, use_selection=True, ascii=True)
+        print(f"  ✓ Reverse UV object exported to {reverse_stl_path}")
+
+        # Clean up the created object and its mesh data
+        bpy.data.objects.remove(flattened_uv_object, do_unlink=True)
+
     # Duplicate the object to create an independent copy for the shrinkwrap target.
     # This preserves the original high-detail surface.
     bpy.context.view_layer.objects.active = mesh
@@ -371,24 +517,41 @@ def remesh_with_blender(input_file, output_file, edge_length=0.5, use_voxel=True
     print(f"  • {output_file} - Final isotropic remeshed mesh (STL)")
     print(f"  • {output_obj} - 3D mesh with UV coordinates (OBJ format)")
     print(f"  • {output_uv_stl} - UV parameterization visualization (STL, Z=0 plane)")
+    print(f"  • reverse.stl - 3D object created from the UV map (STL, Z=0 plane)")
     print(f"\nRemeshing applied:")
     print(f"  • Voxel size: {edge_length}")
     print(f"  • Creates uniform, isotropic mesh")
     print(f"  • Non-overlapping UV parameterization via Smart UV Project")
 
 if __name__ == "__main__":
+    
     # Parse command line arguments
     argv = sys.argv[sys.argv.index("--") + 1:]
 
     input_file = argv[0] if len(argv) > 0 else "test.stl"
     output_file = argv[1] if len(argv) > 1 else "output_blender.stl"
-
+    
     # Parse optional parameters
     edge_length = 0.5
     if "--edge-length" in argv:
         idx = argv.index("--edge-length")
         if idx + 1 < len(argv):
             edge_length = float(argv[idx + 1])
-
+    
     # Run remeshing
-    remesh_with_blender(input_file, output_file, edge_length=edge_length)
+    # remesh_with_blender(input_file, output_file, edge_length=edge_length)
+    
+    # --- Example of how to call the new UV remeshing workflow ---
+    # You could replace the call above with this block to use the new method.
+    # Note: This is an alternative pipeline.
+    #
+    clear_scene()
+    mesh = import_stl(input_file)
+    fix_orientation(mesh)
+    apply_uv_unwrap(mesh, method='SMART_UV_PROJECT')
+    #
+    # Perform the UV-space remesh
+    new_remeshed_obj = remesh_in_uv_space(mesh, edge_length=edge_length)
+    #
+    if new_remeshed_obj:
+        export_stl(new_remeshed_obj, output_file)

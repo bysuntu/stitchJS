@@ -64,3 +64,4 @@ stitch.jsx
 # Large binary files (except test file)
 *.stl
 !test.stl
+.app

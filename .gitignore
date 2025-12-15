@@ -65,3 +65,4 @@ stitch.jsx
 *.stl
 !test.stl
 .app
+!test_stitched.stl

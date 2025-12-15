@@ -68,6 +68,43 @@ export function detectBoundaryEdgesSTLWithAdjacency(polyData) {
       adjacencyMap.get(p1).add([p0, -rotation, cellId, side]);
   }
 
+  // === VALIDATION LOGGING (stitchJS) ===
+  console.log('\n=== STITCHJS BOUNDARY DETECTION RESULTS ===');
+  console.log(`Total triangles analyzed: ${numCells}`);
+  console.log(`Boundary edges: ${boundaryEdges.length}`);
+  console.log(`Boundary points: ${adjacencyMap.size}`);
+
+  // Analyze adjacency structure
+  let openEnds = 0, normalPoints = 0, junctions = 0;
+  adjacencyMap.forEach((neighbors) => {
+    if (neighbors.size === 1) openEnds++;
+    else if (neighbors.size === 2) normalPoints++;
+    else junctions++;
+  });
+  console.log(`  - Open ends: ${openEnds}`);
+  console.log(`  - Normal points (2 neighbors): ${normalPoints}`);
+  console.log(`  - Junctions (3+ neighbors): ${junctions}`);
+
+  // Sample first 10 boundary edges
+  console.log('\nFirst 10 boundary edges:');
+  boundaryEdges.slice(0, 10).forEach((edge, idx) => {
+    console.log(`  [${idx}] Edge ${edge[0]}-${edge[1]}`);
+  });
+
+  // Log adjacency map structure for first 5 boundary points
+  console.log('\nFirst 5 boundary points adjacency:');
+  let count = 0;
+  for (const [pointId, neighbors] of adjacencyMap.entries()) {
+    if (count >= 5) break;
+    const neighborList = Array.from(neighbors).map(([nId, rot, cell, side]) =>
+      `neighbor=${nId}, rot=${rot}, cell=${cell}, side=${side}`
+    );
+    console.log(`  Point ${pointId}: ${neighbors.size} neighbors`);
+    neighborList.forEach(n => console.log(`    ${n}`));
+    count++;
+  }
+  console.log('='.repeat(50));
+
   return { boundaryEdges, adjacencyMap };
 }
 

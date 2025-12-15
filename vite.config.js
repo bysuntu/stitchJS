@@ -16,7 +16,7 @@ export default defineConfig({
     chunkSizeWarningLimit: 10000,
   },
   server: {
-    port: 8080,
+    port: 8090,
     open: true,
   },
   resolve: {
